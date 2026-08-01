@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* —— Shadcn HSL (Settings / CommandPalette / legacy) —— */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --radius: 0.5rem;
+
+    /* —— Color tokens (Figma shell + landing) —— */
+    --prism-bg-editor: #131313;
+    --prism-bg-panel: #1a1a1c;
+    --prism-bg-rail: rgba(43, 43, 43, 0.3);
+    --prism-bg-dock: rgba(26, 26, 26, 0.88);
+    --prism-bg-composer: rgba(32, 32, 32, 0.55);
+    --prism-bg-turn: rgba(28, 28, 28, 0.9);
+    --prism-text: #ffffff;
+    --prism-text-muted: #adadad;
+    --prism-text-meta: #909090;
+    --prism-text-dim: #686868;
+    --prism-keycap: #444444;
+    --prism-focus: #00bfff;
+    --prism-focus-ring: rgba(0, 191, 255, 0.35);
+    --prism-focus-ring-soft: rgba(0, 191, 255, 0.25);
+    --prism-accent-cyan: #07d5e7;
+    --prism-border: rgba(255, 255, 255, 0.1);
+    --prism-border-subtle: rgba(255, 255, 255, 0.05);
+    --prism-fill: rgba(255, 255, 255, 0.1);
+    --prism-fill-hover: rgba(255, 255, 255, 0.05);
+
+    /* —— Glass —— */
+    --prism-glass: rgba(17, 17, 17, 0.55);
+    --prism-glass-hover: rgba(20, 24, 36, 0.62);
+    --prism-input: rgba(255, 255, 255, 0.12);
+    --prism-input-focus: rgba(255, 255, 255, 0.16);
+    --prism-blur-sm: 8px;
+    --prism-blur-md: 12px;
+    --prism-blur-lg: 18px;
+    --prism-blur-xl: 24px;
+
+    /* —— Spacing —— */
+    --prism-space-1: 0.25rem;
+    --prism-space-2: 0.5rem;
+    --prism-space-3: 0.75rem;
+    --prism-space-4: 1rem;
+    --prism-space-5: 1.25rem;
+    --prism-space-6: 1.5rem;
+    --prism-space-8: 2rem;
+    --prism-space-12: 3rem;
+
+    /* —— Radius —— */
+    --prism-radius-control: 0.375rem;
+    --prism-radius-card: 1rem;
+    --prism-radius-panel: 0.75rem;
+    --prism-radius-composer: 24px;
+    --prism-radius-input: 18px;
+
+    /* —— Shadow —— */
+    --prism-shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --prism-shadow-composer: 0 8px 40px rgba(0, 0, 0, 0.35);
+    --prism-shadow-inset-focus: inset 0 0 0 1px var(--prism-focus-ring);
+    --prism-shadow-inset-glass: inset 2px 4px 10.5px 0 rgba(255, 255, 255, 0.12);
+    --prism-radius-auth: 29px;
+
+    /* —— Typography scale —— */
+    --prism-text-2xs: 10px;
+    --prism-text-xs: 11px;
+    --prism-text-sm: 13px;
+    --prism-text-base: 16px;
+    --prism-text-md: 17px;
+    --prism-text-lg: 20px;
+    --prism-text-xl: 24px;
+    --prism-text-2xl: 32px;
+    --prism-text-3xl: 36px;
+    --prism-tracking-tight: 0.06em;
+    --prism-tracking-wide: 0.08em;
+
+    /* —— Motion —— */
+    --prism-duration-press: 150ms;
+    --prism-duration-ui: 200ms;
+    --prism-duration-panel: 300ms;
+    --prism-duration-enter: 500ms;
+    --prism-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@keyframes prism-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes prism-fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes opening-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.92;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes opening-chroma-drift {
+  0%,
+  100% {
+    transform: translateY(-50%) translateX(0);
+  }
+  50% {
+    transform: translateY(-50%) translateX(1.2px);
+  }
+}
+
+@layer components {
+  .prism-shell-surface {
+    background-color: color-mix(in srgb, var(--prism-bg-panel) 90%, transparent);
+    border-color: var(--prism-border);
+    backdrop-filter: blur(var(--prism-blur-md));
+  }
+
+  .prism-composer-surface {
+    background-color: var(--prism-bg-composer);
+    backdrop-filter: blur(var(--prism-blur-lg));
+    border: 1px solid var(--prism-border-subtle);
+    border-radius: var(--prism-radius-composer);
+    box-shadow: var(--prism-shadow-composer);
+  }
+
+  .prism-glass-panel {
+    border-radius: var(--prism-radius-auth);
+    background: rgba(17, 17, 17, 0.55);
+    backdrop-filter: blur(28px);
+    border: 1px solid var(--prism-border-subtle);
+    box-shadow: var(--prism-shadow-inset-glass);
+    transition: background-color var(--prism-duration-panel) var(--prism-ease-out),
+      box-shadow var(--prism-duration-panel) var(--prism-ease-out);
+  }
+
+  .prism-glass-panel:hover {
+    background: rgba(20, 24, 36, 0.62);
+  }
+
+  @keyframes auth-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .prism-icon-btn {
+    @apply rounded-md p-2 transition-all;
+    color: var(--prism-text-meta);
+    transition-duration: var(--prism-duration-press);
+  }
+
+  .prism-icon-btn:hover {
+    background-color: var(--prism-fill);
+    color: var(--prism-text);
+  }
+
+  .prism-icon-btn:active {
+    transform: scale(0.95);
+  }
+
+  .prism-icon-btn-active {
+    background-color: var(--prism-fill);
+    color: var(--prism-text);
+  }
+
+  .prism-focus-ring:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--prism-focus) 70%, transparent);
+    outline-offset: 2px;
+  }
+
+  .prism-focus-ring-sm:focus-visible {
+    outline: 1px solid var(--prism-focus);
+    outline-offset: 1px;
+  }
+
+  .prism-inset-focus {
+    box-shadow: var(--prism-shadow-inset-focus);
+  }
+
+  .prism-enter {
+    animation: prism-fade-in var(--prism-duration-enter) var(--prism-ease-out) both;
+  }
+
+  .prism-enter-fast {
+    animation: prism-fade-in var(--prism-duration-panel) var(--prism-ease-out) both;
+  }
+
+  .prism-enter-up {
+    animation: prism-fade-slide-up var(--prism-duration-panel) var(--prism-ease-out) both;
+  }
+}

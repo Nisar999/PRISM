@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────
+# PRISM — .gitignore
+# Repository of truth: github.com/Nisar999/PRISM
+# Only source, docs, assets, and hand-maintained config are tracked.
+# Everything generated, vendored, or machine-local is excluded.
+# ─────────────────────────────────────────────────────────────
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+.env.*.secrets
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*.credentials
+
+# ── Python (backend) ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# ── Node (desktop) ──
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+
+# ── Rust / Tauri (desktop/src-tauri) ──
+desktop/src-tauri/target/
+**/target/
+
+# ── Vite / build outputs ──
+dist/
+build/
+
+# ── Vendored / staged runtime (fetched & staged by scripts, never committed) ──
+# Full VS Code / Code-OSS source tree — ~6.6 GB, fetched upstream.
+vscode-main/
+# Staged self-contained runtime bundled into the installer by stage-runtime.py
+desktop/src-tauri/resources/runtime/
+desktop/src-tauri/resources/runtime.locked/
+
+# ── Docker ──
+docker/data/
+
+# ── Logs / crash dumps / local smoke artifacts ──
+*.log
+logs/
+uvicorn_sprint1.*
+_cert_*
+.verify-openapi.json
+*.dump
+*.crash
+
+# ── Local toolchains (portable Node, etc.) ──
+.tools/
+
+# ── IDE / agent local state ──
+# .cursor/ holds Cursor agent sessions/brain/config (local). Project rules/skills
+# may be selectively tracked by un-ignoring .cursor/rules/ and .cursor/skills/.
+.cursor/
+.prism/
+.agents/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini

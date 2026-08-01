@@ -1,0 +1,39 @@
+{
+  "name": "prism-desktop",
+  "private": true,
+  "version": "1.0.0-rc.1",
+  "description": "PRISM Desktop — Agentic Intelligent Workspace",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "stage:runtime": "python ../scripts/stage-runtime.py",
+    "build:desktop": "npm run tauri -- build --no-bundle && npm run copy-latest-build",
+    "release:installer": "npm run stage:runtime && npm run tauri -- build && npm run copy-latest-build",
+    "copy-latest-build": "node scripts/copy-latest-build.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.23.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.18.1",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

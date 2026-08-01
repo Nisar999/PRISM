@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PRISM Code-OSS Bridge Host</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --panel: #252526;
+      --border: #3c3c3c;
+      --fg: #cccccc;
+      --muted: #858585;
+      --accent: #0e639c;
+      --tab: #2d2d2d;
+      --tab-active: #1e1e1e;
+      --font: "Cascadia Code", "Consolas", "Courier New", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: var(--font); }
+    #app { display: flex; flex-direction: column; height: 100%; }
+    #chrome {
+      display: flex; align-items: center; gap: 10px;
+      height: 28px; padding: 0 10px;
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      font-size: 11px; color: var(--muted);
+    }
+    #chrome strong { color: var(--fg); font-weight: 600; }
+    #tabs {
+      display: flex; gap: 1px; background: var(--border);
+      border-bottom: 1px solid var(--border); min-height: 32px; overflow-x: auto;
+    }
+    .tab {
+      background: var(--tab); color: var(--muted); border: none;
+      padding: 8px 14px; font: inherit; font-size: 12px; cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab.active { background: var(--tab-active); color: var(--fg); }
+    .tab .dirty { color: #cca700; }
+    #workspace {
+      font-size: 11px; color: var(--muted); padding: 4px 10px;
+      border-bottom: 1px solid var(--border); background: #1b1b1b;
+    }
+    #editor-wrap { flex: 1; min-height: 0; display: flex; }
+    #gutter {
+      width: 48px; background: var(--bg); color: var(--muted);
+      text-align: right; padding: 12px 8px; font-size: 13px; line-height: 1.5;
+      border-right: 1px solid var(--border); user-select: none; overflow: hidden;
+    }
+    #editor {
+      flex: 1; resize: none; border: none; outline: none;
+      background: var(--bg); color: var(--fg);
+      padding: 12px; font: inherit; font-size: 13px; line-height: 1.5;
+      white-space: pre; overflow: auto;
+    }
+    #status {
+      height: 22px; display: flex; align-items: center; gap: 12px;
+      padding: 0 10px; background: var(--accent); color: #fff;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="chrome">
+      <strong>Code-OSS Bridge</strong>
+      <span>PROOF-ONLY · Sprint 4A fallback · protocol v1</span>
+      <span id="engine-meta" style="margin-left:auto"></span>
+    </div>
+    <div id="workspace">No workspace</div>
+    <div id="tabs"></div>
+    <div id="editor-wrap">
+      <div id="gutter"></div>
+      <textarea id="editor" spellcheck="false" placeholder="// Waiting for openFile from PRISM adapter…"></textarea>
+    </div>
+    <div id="status">
+      <span id="status-lang">plaintext</span>
+      <span id="status-uri" style="margin-left:auto;opacity:.85"></span>
+    </div>
+  </div>
+  <script>
+    const PROTOCOL_V = 1;
+    const MSG = {
+      PING: 'prism.editor.ping',
+      OPEN_WORKSPACE: 'prism.editor.openWorkspace',
+      OPEN_FILE: 'prism.editor.openFile',
+      FOCUS: 'prism.editor.focus',
+      DISPOSE: 'prism.editor.dispose',
+      READY: 'prism.editor.ready',
+      PONG: 'prism.editor.pong',
+      ACTIVE_EDITOR: 'prism.editor.activeEditor',
+      WORKSPACE_OPENED: 'prism.editor.workspaceOpened',
+      ERROR: 'prism.editor.error',
+    };
+
+    const state = {
+      workspaceUri: null,
+      files: new Map(), // uri -> { content, language, title, dirty }
+      activeUri: null,
+    };
+
+    const el = {
+      editor: document.getElementById('editor'),
+      gutter: document.getElementById('gutter'),
+      tabs: document.getElementById('tabs'),
+      workspace: document.getElementById('workspace'),
+      statusLang: document.getElementById('status-lang'),
+      statusUri: document.getElementById('status-uri'),
+      engineMeta: document.getElementById('engine-meta'),
+    };
+
+    function envelope(type, payload) {
+      return { v: PROTOCOL_V, type, payload };
+    }
+
+    function post(type, payload) {
+      if (!window.parent || window.parent === window) return;
+      window.parent.postMessage(envelope(type, payload), '*');
+    }
+
+    function guessLanguage(uri) {
+      const m = String(uri).toLowerCase().match(/\.([a-z0-9]+)$/);
+      const ext = m ? m[1] : '';
+      const map = {
+        ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
+        py: 'python', rs: 'rust', go: 'go', md: 'markdown', json: 'json',
+        css: 'css', html: 'html', yml: 'yaml', yaml: 'yaml', toml: 'toml',
+      };
+      return map[ext] || 'plaintext';
+    }
+
+    function titleOf(uri) {
+      const parts = String(uri).replace(/\\/g, '/').split('/');
+      return parts[parts.length - 1] || uri;
+    }
+
+    function updateGutter() {
+      const lines = el.editor.value.split('\n').length;
+      let html = '';
+      for (let i = 1; i <= lines; i++) html += i + '\n';
+      el.gutter.textContent = html;
+    }
+
+    function renderTabs() {
+      el.tabs.innerHTML = '';
+      for (const [uri, file] of state.files) {
+        const btn = document.createElement('button');
+        btn.className = 'tab' + (uri === state.activeUri ? ' active' : '');
+        btn.type = 'button';
+        btn.innerHTML = (file.dirty ? '<span class="dirty">● </span>' : '') +
+          (file.title || titleOf(uri));
+        btn.onclick = () => activate(uri);
+        el.tabs.appendChild(btn);
+      }
+    }
+
+    function reportActive() {
+      if (!state.activeUri) {
+        post(MSG.ACTIVE_EDITOR, null);
+        return;
+      }
+      const file = state.files.get(state.activeUri);
+      post(MSG.ACTIVE_EDITOR, {
+        uri: state.activeUri,
+        language: file?.language,
+        dirty: !!file?.dirty,
+        title: file?.title || titleOf(state.activeUri),
+      });
+    }
+
+    function activate(uri) {
+      // persist current buffer
+      if (state.activeUri && state.files.has(state.activeUri)) {
+        const cur = state.files.get(state.activeUri);
+        cur.content = el.editor.value;
+      }
+      state.activeUri = uri;
+      const file = state.files.get(uri);
+      el.editor.value = file ? file.content : '';
+      el.statusLang.textContent = file?.language || 'plaintext';
+      el.statusUri.textContent = uri;
+      updateGutter();
+      renderTabs();
+      reportActive();
+    }
+
+    function openWorkspace(payload) {
+      state.workspaceUri = payload?.folderUri || null;
+      el.workspace.textContent = state.workspaceUri
+        ? 'Workspace: ' + state.workspaceUri
+        : 'No workspace';
+      post(MSG.WORKSPACE_OPENED, { folderUri: state.workspaceUri });
+    }
+
+    function openFile(payload) {
+      if (!payload?.uri) {
+        post(MSG.ERROR, { message: 'openFile requires uri' });
+        return;
+      }
+      const uri = payload.uri;
+      const existing = state.files.get(uri);
+      const content = payload.content != null
+        ? String(payload.content)
+        : (existing?.content ?? '');
+      state.files.set(uri, {
+        content,
+        language: payload.language || guessLanguage(uri),
+        title: payload.title || titleOf(uri),
+        dirty: existing ? existing.dirty : false,
+      });
+      activate(uri);
+    }
+
+    el.editor.addEventListener('input', () => {
+      updateGutter();
+      if (!state.activeUri) return;
+      const file = state.files.get(state.activeUri);
+      if (!file) return;
+      file.content = el.editor.value;
+      file.dirty = true;
+      renderTabs();
+      reportActive();
+    });
+
+    el.editor.addEventListener('scroll', () => {
+      el.gutter.scrollTop = el.editor.scrollTop;
+    });
+
+    window.addEventListener('message', (ev) => {
+      const data = ev.data;
+      if (!data || data.v !== PROTOCOL_V || typeof data.type !== 'string') return;
+      switch (data.type) {
+        case MSG.PING:
+          post(MSG.PONG);
+          break;
+        case MSG.OPEN_WORKSPACE:
+          openWorkspace(data.payload || {});
+          break;
+        case MSG.OPEN_FILE:
+          openFile(data.payload || {});
+          break;
+        case MSG.FOCUS:
+          el.editor.focus();
+          break;
+        case MSG.DISPOSE:
+          state.files.clear();
+          state.activeUri = null;
+          el.editor.value = '';
+          renderTabs();
+          updateGutter();
+          break;
+        default:
+          break;
+      }
+    });
+
+    el.engineMeta.textContent = 'engine: code-oss-bridge';
+    updateGutter();
+    post(MSG.READY, { engine: 'code-oss-bridge', version: '0.4a.0' });
+  </script>
+</body>
+</html>

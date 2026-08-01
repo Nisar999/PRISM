@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose an addition or improvement (non-architectural)
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PRISM's architecture is frozen. Proposals that change frozen
+        surfaces (see docs/ARCHITECTURE_FREEZE.md) should reference the
+        governing ADR and explain why an exception is warranted.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is currently hard or impossible to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Desktop (Tauri / React)
+        - Backend (FastAPI)
+        - Code-OSS integration
+        - Docker / infrastructure
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: frozen
+    attributes:
+      label: Architecture impact
+      options:
+        - label: This change is additive and does not alter frozen architecture.

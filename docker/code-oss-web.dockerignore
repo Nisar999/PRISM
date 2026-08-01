@@ -1,0 +1,13 @@
+# Keep Code-OSS web image build lean (context = repo root via compose).
+**/.git
+**/node_modules
+**/out
+**/.build
+**/desktop/node_modules
+**/desktop/dist
+**/backend/.venv
+**/frontend
+**/Desboard
+**/.tools
+**/canvases
+**/*.canvas.tsx

@@ -1,0 +1,12 @@
+# PRISM CODEOWNERS
+# Reviewers requested automatically for changes in these paths.
+# Replace @Nisar999 with additional maintainers as the team grows.
+
+*                           @Nisar999
+/backend/                   @Nisar999
+/desktop/                   @Nisar999
+/desktop/src-tauri/         @Nisar999
+/docker/                    @Nisar999
+/docs/                      @Nisar999
+/.github/                   @Nisar999
+/scripts/                   @Nisar999

@@ -1,0 +1,54 @@
+# Dependabot — keep PRISM's dependencies current.
+# Updates are grouped and opened against `develop` to avoid noise on `main`.
+
+version: 2
+updates:
+  # Desktop (npm)
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns: ["react", "react-dom", "react-router-dom"]
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      build-tooling:
+        patterns: ["vite", "typescript", "tailwindcss", "postcss", "autoprefixer", "@vitejs/*", "@types/*"]
+    target-branch: "develop"
+    commit-message:
+      prefix: "deps(desktop)"
+
+  # Desktop (Rust / Tauri)
+  - package-ecosystem: "cargo"
+    directory: "/desktop/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "develop"
+    commit-message:
+      prefix: "deps(tauri)"
+
+  # Backend (Python)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      dev-tools:
+        patterns: ["pytest*", "ruff", "mypy"]
+    target-branch: "develop"
+    commit-message:
+      prefix: "deps(backend)"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    target-branch: "develop"
+    commit-message:
+      prefix: "deps(ci)"

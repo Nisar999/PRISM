@@ -1,0 +1,49 @@
+# PRISM — .gitattributes
+# Normalize line endings and mark binary assets so diffs stay clean across platforms.
+
+# Default: text with LF in the repo, native checkout.
+* text=auto eol=lf
+
+# Shell scripts must stay LF.
+*.sh   text eol=lf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Source / config — explicit text.
+*.py    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.rs    text eol=lf
+
+# Binary assets — never normalize.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.icns binary
+*.svg  text
+*.pdf  binary
+*.gz   binary
+*.tgz  binary
+*.zip  binary
+*.whl  binary
+*.exe  binary
+*.msi  binary
+
+# Linguist hints (GitHub language stats) — keep vendored/generated trees out of stats.
+vscode-main/ linguist-vendored
+desktop/src-tauri/resources/runtime/ linguist-vendored
+desktop/src-tauri/target/ linguist-vendored
+docs/** linguist-documentation

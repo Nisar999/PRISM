@@ -1,0 +1,246 @@
+# Code-OSS Web Host (PRISM-owned)
+#
+# Embeds an unmodified Code-OSS web workbench in an iframe and translates
+# the PRISM Workspace Adapter protocol (v1) without patching vscode-main.
+#
+# Query params:
+#   workbench = absolute URL of Code-OSS web (default: http://localhost:8080/)
+#   folder    = optional folder URI to open on load
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PRISM Code-OSS Web Host</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1e1e1e; color: #ccc; font-family: Consolas, monospace; }
+    #root { display: flex; flex-direction: column; height: 100%; }
+    #banner {
+      display: none; align-items: center; gap: 10px; padding: 8px 12px;
+      background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 12px;
+    }
+    #banner.visible { display: flex; }
+    #banner a { color: #3794ff; }
+    #frame { flex: 1; border: 0; width: 100%; background: #1e1e1e; }
+    #frame.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="banner"></div>
+    <iframe id="frame" title="Code-OSS Web Workbench" allow="clipboard-read; clipboard-write"></iframe>
+  </div>
+  <script>
+    const PROTOCOL_V = 1;
+    const MSG = {
+      PING: 'prism.editor.ping',
+      OPEN_WORKSPACE: 'prism.editor.openWorkspace',
+      OPEN_FILE: 'prism.editor.openFile',
+      FOCUS: 'prism.editor.focus',
+      DISPOSE: 'prism.editor.dispose',
+      READY: 'prism.editor.ready',
+      PONG: 'prism.editor.pong',
+      ACTIVE_EDITOR: 'prism.editor.activeEditor',
+      WORKSPACE_OPENED: 'prism.editor.workspaceOpened',
+      ERROR: 'prism.editor.error',
+    };
+
+    const params = new URLSearchParams(location.search);
+    const defaultWorkbench = params.get('workbench') || 'http://127.0.0.1:8080/';
+    const initialFolder = params.get('folder') || '';
+
+    const state = {
+      workbenchBase: defaultWorkbench.replace(/\/?$/, '/'),
+      folderUri: initialFolder || null,
+      ready: false,
+      lastFileUri: null,
+    };
+
+    const frame = document.getElementById('frame');
+    const banner = document.getElementById('banner');
+
+    function envelope(type, payload) {
+      return { v: PROTOCOL_V, type, payload };
+    }
+
+    function post(type, payload) {
+      if (!window.parent || window.parent === window) return;
+      window.parent.postMessage(envelope(type, payload), '*');
+    }
+
+    function showBanner(html) {
+      banner.innerHTML = html;
+      banner.classList.add('visible');
+    }
+
+    function hideBanner() {
+      banner.classList.remove('visible');
+      banner.innerHTML = '';
+    }
+
+    function buildWorkbenchUrl(folderUri) {
+      const url = new URL(state.workbenchBase);
+      // @vscode/test-web accepts folder via path / query depending on version;
+      // folderUri as query is the safest non-invasive open hint.
+      if (folderUri) {
+        url.searchParams.set('folder', folderUri);
+      }
+      return url.toString();
+    }
+
+    function loadWorkbench(folderUri) {
+      const next = buildWorkbenchUrl(folderUri || state.folderUri);
+      frame.classList.remove('hidden');
+      frame.src = next;
+    }
+
+    async function probeOnce() {
+      // Code-OSS may not send CORS — no-cors still proves something answered on the port.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        await fetch(state.workbenchBase, {
+          method: 'GET',
+          mode: 'no-cors',
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        clearTimeout(timer);
+        return true;
+      } catch {
+        clearTimeout(timer);
+        return false;
+      }
+    }
+
+    async function probeWorkbench() {
+      const attempts = 4;
+      for (let i = 0; i < attempts; i++) {
+        if (await probeOnce()) return true;
+        if (i < attempts - 1) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+      return false;
+    }
+
+    function markReady() {
+      if (state.ready) return;
+      state.ready = true;
+      hideBanner();
+      post(MSG.READY, {
+        engine: 'code-oss-web',
+        version: '1.131.0',
+        capabilities: {
+          openWorkspace: 'navigate',
+          openFile: 'partial',
+          activeEditor: 'unavailable-cross-origin',
+          focus: true,
+          monaco: true,
+          extensionHost: 'workbench-managed',
+          // Constitution: these surfaces are owned by unmodified Code-OSS workbench UI.
+          explorer: 'workbench',
+          editorTabs: 'workbench',
+          terminal: 'workbench',
+          problems: 'workbench',
+          search: 'workbench',
+        },
+      });
+      if (state.folderUri) {
+        post(MSG.WORKSPACE_OPENED, { folderUri: state.folderUri });
+      }
+    }
+
+    function openWorkspace(payload) {
+      const folderUri = payload && payload.folderUri;
+      if (!folderUri) {
+        post(MSG.ERROR, { message: 'openWorkspace requires folderUri' });
+        return;
+      }
+      state.folderUri = folderUri;
+      loadWorkbench(folderUri);
+      post(MSG.WORKSPACE_OPENED, { folderUri });
+    }
+
+    function openFile(payload) {
+      // Cross-origin unmodified workbench cannot accept in-memory buffers.
+      // Best-effort: navigate with vscode-file / path hint when uri looks filesystem-like.
+      const uri = payload && payload.uri;
+      if (!uri) {
+        post(MSG.ERROR, { message: 'openFile requires uri' });
+        return;
+      }
+      state.lastFileUri = uri;
+      try {
+        const url = new URL(state.workbenchBase);
+        if (state.folderUri) url.searchParams.set('folder', state.folderUri);
+        url.searchParams.set('file', uri);
+        frame.src = url.toString();
+      } catch (e) {
+        post(MSG.ERROR, { message: String(e && e.message ? e.message : e) });
+        return;
+      }
+      // Active editor reporting is unavailable across origins without an extension.
+      post(MSG.ACTIVE_EDITOR, {
+        uri,
+        language: payload.language,
+        dirty: false,
+        title: payload.title || uri.split('/').pop() || uri,
+      });
+    }
+
+    frame.addEventListener('load', () => {
+      // load also fires for about:blank / error pages; only mark ready after probe success path.
+      if (frame.src && frame.src !== 'about:blank') {
+        markReady();
+      }
+    });
+
+    window.addEventListener('message', (ev) => {
+      const data = ev.data;
+      if (!data || data.v !== PROTOCOL_V || typeof data.type !== 'string') return;
+      switch (data.type) {
+        case MSG.PING:
+          post(MSG.PONG);
+          break;
+        case MSG.OPEN_WORKSPACE:
+          openWorkspace(data.payload || {});
+          break;
+        case MSG.OPEN_FILE:
+          openFile(data.payload || {});
+          break;
+        case MSG.FOCUS:
+          try { frame.contentWindow && frame.contentWindow.focus(); } catch (_) {}
+          frame.focus();
+          break;
+        case MSG.DISPOSE:
+          frame.src = 'about:blank';
+          state.ready = false;
+          break;
+        default:
+          break;
+      }
+    });
+
+    (async function boot() {
+      showBanner('Probing Code-OSS web at <code>' + state.workbenchBase + '</code>…');
+      const up = await probeWorkbench();
+      if (!up) {
+        showBanner(
+          'Code-OSS web not reachable at <code>' + state.workbenchBase + '</code>. ' +
+          'From the repo root run <code>pwsh scripts/code-oss-web.ps1</code> ' +
+          '(Docker or native), wait until port 8080 responds, then reload this page.'
+        );
+        post(MSG.ERROR, {
+          message: 'Code-OSS web workbench not reachable at ' + state.workbenchBase,
+        });
+        frame.classList.add('hidden');
+        return;
+      }
+      showBanner('Loading unmodified Code-OSS web workbench…');
+      loadWorkbench(state.folderUri);
+    })();
+  </script>
+</body>
+</html>

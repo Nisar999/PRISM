@@ -1,0 +1,16 @@
+# Unmodified Code-OSS web workbench for PRISM Desktop embed (Sprint 4B).
+# From repo root:
+#   docker compose -f docker/code-oss-web.compose.yml up --build
+#
+# Workbench: http://127.0.0.1:8080
+# PRISM host: /code-oss-host/index.html
+
+services:
+  code-oss-web:
+    build:
+      context: ../vscode-main/vscode-main
+      dockerfile: ../../docker/code-oss-web.Dockerfile
+    image: prism-code-oss-web:1.131
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

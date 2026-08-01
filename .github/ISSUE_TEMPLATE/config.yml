@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: PRISM Documentation
+    url: https://github.com/Nisar999/PRISM/blob/main/docs/ARCHITECTURE_INDEX.md
+    about: Read the architecture index and frozen specs before filing an issue.
+  - name: Security Report (Private)
+    url: https://github.com/Nisar999/PRISM/security/advisories/new
+    about: Report security vulnerabilities privately. Do not open a public issue.

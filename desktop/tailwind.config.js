@@ -1,0 +1,141 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class"],
+  content: [
+    "./index.html",
+    "./src/**/*.{ts,tsx,js,jsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        prism: {
+          editor: "var(--prism-bg-editor)",
+          panel: "var(--prism-bg-panel)",
+          rail: "var(--prism-bg-rail)",
+          dock: "var(--prism-bg-dock)",
+          composer: "var(--prism-bg-composer)",
+          turn: "var(--prism-bg-turn)",
+          muted: "var(--prism-text-muted)",
+          meta: "var(--prism-text-meta)",
+          dim: "var(--prism-text-dim)",
+          keycap: "var(--prism-keycap)",
+          focus: "var(--prism-focus)",
+          cyan: "var(--prism-accent-cyan)",
+          glass: "var(--prism-glass)",
+          border: "var(--prism-border)",
+          subtle: "var(--prism-border-subtle)",
+          fill: "var(--prism-fill)",
+          soft: "var(--prism-fill-hover)",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+        control: "var(--prism-radius-control)",
+        card: "var(--prism-radius-card)",
+        panel: "var(--prism-radius-panel)",
+        composer: "var(--prism-radius-composer)",
+        input: "var(--prism-radius-input)",
+      },
+      fontFamily: {
+        manrope: ["Manrope", "system-ui", "sans-serif"],
+        afacad: ['"Afacad Flux"', "system-ui", "sans-serif"],
+        poller: ['"Poller One"', "Georgia", "serif"],
+        instrument: ['"Instrument Serif"', "Georgia", "serif"],
+        adlam: ['"ADLaM Display"', "system-ui", "sans-serif"],
+      },
+      fontSize: {
+        "prism-2xs": ["var(--prism-text-2xs)", { lineHeight: "1.2" }],
+        "prism-xs": ["var(--prism-text-xs)", { lineHeight: "1.2" }],
+        "prism-sm": ["var(--prism-text-sm)", { lineHeight: "1.35" }],
+        "prism-base": ["var(--prism-text-base)", { lineHeight: "1.4" }],
+        "prism-md": ["var(--prism-text-md)", { lineHeight: "1.35" }],
+        "prism-lg": ["var(--prism-text-lg)", { lineHeight: "1.2" }],
+        "prism-xl": ["var(--prism-text-xl)", { lineHeight: "1.2" }],
+        "prism-2xl": ["var(--prism-text-2xl)", { lineHeight: "1.1" }],
+        "prism-3xl": ["var(--prism-text-3xl)", { lineHeight: "0.9" }],
+      },
+      boxShadow: {
+        "prism-elevated": "var(--prism-shadow-elevated)",
+        "prism-composer": "var(--prism-shadow-composer)",
+        "prism-inset-focus": "var(--prism-shadow-inset-focus)",
+        "prism-inset-glass": "var(--prism-shadow-inset-glass)",
+      },
+      backdropBlur: {
+        "prism-sm": "var(--prism-blur-sm)",
+        "prism-md": "var(--prism-blur-md)",
+        "prism-lg": "var(--prism-blur-lg)",
+        "prism-xl": "var(--prism-blur-xl)",
+      },
+      transitionDuration: {
+        press: "var(--prism-duration-press)",
+        ui: "var(--prism-duration-ui)",
+        panel: "var(--prism-duration-panel)",
+        enter: "var(--prism-duration-enter)",
+      },
+      transitionTimingFunction: {
+        prism: "var(--prism-ease-out)",
+      },
+      spacing: {
+        "prism-1": "var(--prism-space-1)",
+        "prism-2": "var(--prism-space-2)",
+        "prism-3": "var(--prism-space-3)",
+        "prism-4": "var(--prism-space-4)",
+        "prism-5": "var(--prism-space-5)",
+        "prism-6": "var(--prism-space-6)",
+        "prism-8": "var(--prism-space-8)",
+        "prism-12": "var(--prism-space-12)",
+      },
+      keyframes: {
+        "prism-fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "prism-shimmer": {
+          "0%": { backgroundPosition: "200% 0" },
+          "100%": { backgroundPosition: "-200% 0" },
+        },
+      },
+      animation: {
+        "prism-enter": "prism-fade-in var(--prism-duration-enter) var(--prism-ease-out) both",
+        "prism-enter-fast": "prism-fade-in var(--prism-duration-panel) var(--prism-ease-out) both",
+        "prism-shimmer": "prism-shimmer 1.2s linear infinite",
+      },
+    },
+  },
+  plugins: [],
+};
