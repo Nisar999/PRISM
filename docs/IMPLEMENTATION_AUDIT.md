@@ -754,7 +754,7 @@ Desktop Agent · Browser Agent · Plugin SDK · Workflow Engine · Distributed A
 
 | Item | Value |
 |------|--------|
-| Commit | _(filled after commit)_ |
-| Push verified | _(filled after push)_ |
+| Commit | `b91168528283e97ca2c774c64f7845b61a0645fd` |
+| Push verified | ✅ `origin/main` == local HEAD (`b911685`); remote `https://github.com/Nisar999/PRISM` |
 
 
