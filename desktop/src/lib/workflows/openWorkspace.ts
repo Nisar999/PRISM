@@ -14,12 +14,20 @@ import { executionStore, notificationStore, workspaceStore } from '../store';
 import { graphEngine } from '../graph';
 import { shellUiStore } from '../shellUi';
 import { appNavigate } from '../appNavigation';
+import {
+  MOUNTED_WORKSPACE_URI,
+  mountEditorWorkspace,
+} from '../ensureEditorRuntime';
+import { isNativeDesktop } from '../nativeFolder';
 
 export interface OpenWorkspaceOptions {
   path: string;
   /** If project.json is missing, create then open. */
   createIfMissing?: { name: string; tags?: string[] };
-  /** Navigate to /editor after open (default false — Conversation remains primary). */
+  /**
+   * Navigate to PRISM IDE (`/editor`) after open.
+   * Default true — Open Workspace enters the IDE as one product surface.
+   */
   openEditor?: boolean;
   /** Invoke agent for thoughts/summary (default true). */
   summarize?: boolean;
@@ -34,7 +42,9 @@ export interface OpenWorkspaceResult {
   editorReady: boolean;
 }
 
-function folderUriForPath(path: string): string {
+function folderUriForPath(path: string, mounted: boolean): string {
+  // Packaged engine serves the folder via vscode-test-web FS provider mount.
+  if (mounted) return MOUNTED_WORKSPACE_URI;
   const normalized = path.replace(/\\/g, '/');
   if (/^[a-zA-Z]:\//.test(normalized) || normalized.startsWith('/')) {
     return `file:///${normalized.replace(/^\/+/, '')}`;
@@ -96,7 +106,7 @@ async function runStep(
 export async function runOpenWorkspaceWorkflow(
   options: OpenWorkspaceOptions,
 ): Promise<OpenWorkspaceResult> {
-  const openEditor = options.openEditor === true;
+  const openEditor = options.openEditor !== false;
   const summarize = options.summarize !== false;
   const sessionId = `wf_open_${crypto.randomUUID().slice(0, 8)}`;
 
@@ -133,18 +143,33 @@ export async function runOpenWorkspaceWorkflow(
     }
   });
 
-  const folderUri = folderUriForPath(options.path);
+  let folderUri = folderUriForPath(options.path, false);
   let editorReady = false;
 
-  // 3–4. Workspace Adapter opens Code-OSS / editor loads folder
-  await runStep(sessionId, 'wf.open_editor', 'Open editor folder', 'vscodeWorkspaceAdapter', async () => {
+  // 3–4. Mount local folder into the editing engine, then open PRISM IDE
+  await runStep(sessionId, 'wf.open_editor', 'Open PRISM IDE', 'vscodeWorkspaceAdapter', async () => {
+    if (await isNativeDesktop()) {
+      try {
+        const mount = await mountEditorWorkspace(options.path);
+        if (mount?.folderUri) {
+          folderUri = mount.folderUri;
+        } else {
+          folderUri = folderUriForPath(options.path, true);
+        }
+      } catch {
+        folderUri = folderUriForPath(options.path, true);
+      }
+    } else {
+      folderUri = folderUriForPath(options.path, false);
+    }
+
     if (openEditor) {
       const q = new URLSearchParams({ folder: folderUri });
       appNavigate(`/editor?${q.toString()}`);
     }
     // Best-effort: if host already mounted, push openWorkspace; else EditorPage mounts host.
     try {
-      const ready = await vscodeWorkspaceAdapter.waitUntilReady(8_000);
+      const ready = await vscodeWorkspaceAdapter.waitUntilReady(45_000);
       if (ready) {
         await vscodeWorkspaceAdapter.openWorkspace({
           folderUri,
@@ -152,8 +177,7 @@ export async function runOpenWorkspaceWorkflow(
         });
         editorReady = true;
       } else {
-        const snap = vscodeWorkspaceAdapter.getSnapshot();
-        editorReady = snap.hostMode === 'code-oss-web' || snap.hostMode === 'code-oss-bridge';
+        editorReady = false;
       }
     } catch {
       editorReady = false;

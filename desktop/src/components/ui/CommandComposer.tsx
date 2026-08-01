@@ -21,6 +21,7 @@ export interface CommandComposerProps {
   onSelectProvider?: (providerId: string) => void;
   placeholder?: string;
   busy?: boolean;
+  onCancel?: () => void;
   className?: string;
   onMicClick?: () => void;
 }
@@ -37,6 +38,7 @@ export function CommandComposer({
   onSelectProvider,
   placeholder = 'Ask anything, @ to mention, / for actions',
   busy,
+  onCancel,
   className,
   onMicClick,
 }: CommandComposerProps) {
@@ -160,7 +162,17 @@ export function CommandComposer({
               ) : null}
             </div>
           ) : null}
-          <MicButton onClick={onMicClick} disabled={busy} />
+          {busy && onCancel ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-control border border-rose-400/35 bg-rose-500/15 px-3 py-1.5 font-manrope text-[12px] text-rose-100 transition-colors hover:bg-rose-500/25"
+            >
+              Stop
+            </button>
+          ) : (
+            <MicButton onClick={onMicClick} disabled={busy} />
+          )}
         </div>
       </div>
     </form>

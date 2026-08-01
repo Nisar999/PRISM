@@ -160,6 +160,37 @@
   }
 }
 
+@keyframes prism-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes prism-toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+}
+
+@keyframes prism-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
 @layer components {
   .prism-shell-surface {
     background-color: color-mix(in srgb, var(--prism-bg-panel) 90%, transparent);
@@ -242,5 +273,150 @@
 
   .prism-enter-up {
     animation: prism-fade-slide-up var(--prism-duration-panel) var(--prism-ease-out) both;
+  }
+
+  .prism-toast-in {
+    animation: prism-toast-in var(--prism-duration-ui) var(--prism-ease-out) both;
+  }
+
+  .prism-toast-out {
+    animation: prism-toast-out var(--prism-duration-ui) var(--prism-ease-out) both;
+  }
+
+  .prism-progress-indeterminate {
+    animation: prism-progress-slide 1.4s var(--prism-ease-out) infinite;
+  }
+
+  /* —— Milly cognitive motion (intent, not decoration) —— */
+  @keyframes milly-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.75;
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
+  }
+  @keyframes milly-morph {
+    0%,
+    100% {
+      transform: scale(1) rotate(0deg);
+    }
+    50% {
+      transform: scale(1.08) rotate(4deg);
+    }
+  }
+  @keyframes milly-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes milly-oscillate {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(2px);
+    }
+  }
+  @keyframes milly-burst {
+    0% {
+      transform: scale(0.92);
+      filter: brightness(1);
+    }
+    40% {
+      transform: scale(1.18);
+      filter: brightness(1.35);
+    }
+    100% {
+      transform: scale(1);
+      filter: brightness(1);
+    }
+  }
+  @keyframes milly-glitch {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    20% {
+      transform: translate(-1px, 1px);
+    }
+    40% {
+      transform: translate(1px, -1px);
+    }
+    60% {
+      transform: translate(-1px, 0);
+    }
+  }
+  @keyframes milly-warn-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    }
+  }
+  @keyframes milly-speak {
+    0%,
+    100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(1.08);
+    }
+  }
+
+  .milly-motion-breathe {
+    animation: milly-breathe 4s ease-in-out infinite;
+  }
+  .milly-motion-morph {
+    animation: milly-morph 2.2s ease-in-out infinite;
+  }
+  .milly-motion-grid {
+    animation: milly-spin 6s linear infinite;
+  }
+  .milly-motion-radar {
+    animation: milly-morph 2s ease-in-out infinite;
+  }
+  .milly-motion-spin {
+    animation: milly-spin 1.5s linear infinite;
+  }
+  .milly-motion-oscillate {
+    animation: milly-oscillate 1.6s ease-in-out infinite;
+  }
+  .milly-motion-type {
+    animation: milly-morph 1.4s ease-in-out infinite;
+  }
+  .milly-motion-speak {
+    animation: milly-speak 0.55s ease-in-out infinite;
+  }
+  .milly-motion-burst {
+    animation: milly-burst 900ms var(--prism-ease-out) both;
+  }
+  .milly-motion-warn {
+    animation: milly-warn-pulse 1.4s ease-out infinite;
+  }
+  .milly-motion-glitch {
+    animation: milly-glitch 280ms steps(2) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .milly-motion-breathe,
+    .milly-motion-morph,
+    .milly-motion-grid,
+    .milly-motion-radar,
+    .milly-motion-spin,
+    .milly-motion-oscillate,
+    .milly-motion-type,
+    .milly-motion-speak,
+    .milly-motion-burst,
+    .milly-motion-warn,
+    .milly-motion-glitch {
+      animation: none !important;
+    }
   }
 }

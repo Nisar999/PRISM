@@ -376,14 +376,24 @@ export const executionStore = new ExecutionStore();
 // 4. Notification Store
 // ============================================================================
 
+export type NotificationType =
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'error'
+  | 'validation'
+  | 'progress';
+
 export interface SystemNotification {
   id: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'validation';
+  type: NotificationType;
   message: string;
   description?: string;
   timestamp: string;
   read: boolean;
   actionable?: boolean;
+  /** 0–100 for `progress` notifications; undefined renders an indeterminate bar. */
+  progress?: number;
 }
 
 export interface NotificationState {
@@ -391,17 +401,39 @@ export interface NotificationState {
 }
 
 class NotificationStore extends Store<NotificationState> {
+  /** Execution session id → progress notification id. */
+  private sessionProgress = new Map<string, string>();
+  /** Mirrors settings.general.enableNotifications (errors always pass). */
+  private enabled = true;
+
   constructor() {
     super({
       notifications: [],
     });
   }
 
-  public addNotification(notification: Omit<SystemNotification, 'id' | 'timestamp' | 'read'>): void {
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
+  public addNotification(
+    notification: Omit<SystemNotification, 'id' | 'timestamp' | 'read'>,
+  ): string {
+    // Respect the user's preference. Errors and validation always surface —
+    // silencing them would hide failures.
+    if (
+      !this.enabled &&
+      notification.type !== 'error' &&
+      notification.type !== 'validation'
+    ) {
+      return '';
+    }
     const now = Date.now();
+    const id = Math.random().toString(36).substring(2, 9);
     this.updateState((state) => {
       const duplicate = state.notifications.find((n) => {
         const samePayload =
+          !n.read &&
           n.type === notification.type &&
           n.message === notification.message &&
           (n.description ?? '') === (notification.description ?? '');
@@ -413,7 +445,7 @@ class NotificationStore extends Store<NotificationState> {
 
       const newNotif: SystemNotification = {
         ...notification,
-        id: Math.random().toString(36).substring(2, 9),
+        id,
         timestamp: new Date().toISOString(),
         read: false,
       };
@@ -421,12 +453,64 @@ class NotificationStore extends Store<NotificationState> {
         notifications: [newNotif, ...state.notifications],
       };
     });
+    return id;
   }
 
-  public markAsRead(id: string): void {
+  public updateNotification(
+    id: string,
+    patch: Partial<Omit<SystemNotification, 'id' | 'timestamp'>>,
+  ): void {
+    this.updateState((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.id === id ? { ...n, ...patch } : n,
+      ),
+    }));
+  }
+
+  /** Dismiss a toast (keeps it in history as read). */
+  public dismiss(id: string): void {
     this.updateState(state => ({
       notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n),
     }));
+  }
+
+  /** @deprecated Alias for {@link dismiss}. */
+  public markAsRead(id: string): void {
+    this.dismiss(id);
+  }
+
+  public dismissAll(): void {
+    this.updateState((state) => ({
+      notifications: state.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  }
+
+  // --- Progress notifications (long-running operations) ---
+
+  /** Begin a progress notification. Returns the notification id. */
+  public beginProgress(message: string, description?: string): string {
+    return this.addNotification({ type: 'progress', message, description });
+  }
+
+  /** Update a progress notification (0–100; omit for indeterminate). */
+  public setProgress(id: string, progress?: number, description?: string): void {
+    this.updateNotification(id, {
+      progress: typeof progress === 'number' ? Math.max(0, Math.min(100, progress)) : undefined,
+      ...(description !== undefined ? { description } : {}),
+    });
+  }
+
+  /** Resolve a progress notification into a terminal state. */
+  public endProgress(
+    id: string,
+    outcome: { type: Exclude<NotificationType, 'progress'>; message: string; description?: string },
+  ): void {
+    this.updateNotification(id, {
+      type: outcome.type,
+      message: outcome.message,
+      description: outcome.description,
+      progress: undefined,
+    });
   }
 
   public handleKernelEvent(eventType: string, data: any): void {
@@ -437,12 +521,62 @@ class NotificationStore extends Store<NotificationState> {
         message: 'PRISM Kernel Online',
         description: 'Successfully initialized mind registries and connection routes.',
       });
+      return;
+    }
+
+    const sessionId: string | undefined =
+      typeof data?.session_id === 'string' ? data.session_id : undefined;
+
+    if (eventType.endsWith('session_started') && sessionId) {
+      if (!this.sessionProgress.has(sessionId)) {
+        const id = this.beginProgress(
+          'Execution session running',
+          data?.message || `Session ${sessionId}`,
+        );
+        this.sessionProgress.set(sessionId, id);
+      }
+    } else if (eventType.endsWith('progress_updated') && sessionId) {
+      const id = this.sessionProgress.get(sessionId);
+      const progress = (data?.data as { progress?: number } | undefined)?.progress;
+      if (id && typeof progress === 'number') {
+        this.setProgress(id, progress);
+      }
+    } else if (eventType.endsWith('session_succeeded') && sessionId) {
+      const id = this.sessionProgress.get(sessionId);
+      this.sessionProgress.delete(sessionId);
+      if (id) {
+        this.endProgress(id, {
+          type: 'success',
+          message: 'Execution session completed',
+          description: data?.message || `Session ${sessionId} finished successfully.`,
+        });
+      }
     } else if (eventType.endsWith('session_failed')) {
-      this.addNotification({
-        type: 'error',
-        message: 'Execution Session Failed',
-        description: data?.message || `Session ${data?.session_id} ended with errors.`,
-      });
+      const id = sessionId ? this.sessionProgress.get(sessionId) : undefined;
+      if (sessionId) this.sessionProgress.delete(sessionId);
+      if (id) {
+        this.endProgress(id, {
+          type: 'error',
+          message: 'Execution Session Failed',
+          description: data?.message || `Session ${sessionId} ended with errors.`,
+        });
+      } else {
+        this.addNotification({
+          type: 'error',
+          message: 'Execution Session Failed',
+          description: data?.message || `Session ${data?.session_id} ended with errors.`,
+        });
+      }
+    } else if (eventType.endsWith('session_cancelled') && sessionId) {
+      const id = this.sessionProgress.get(sessionId);
+      this.sessionProgress.delete(sessionId);
+      if (id) {
+        this.endProgress(id, {
+          type: 'warning',
+          message: 'Execution session cancelled',
+          description: data?.message || `Session ${sessionId} was cancelled.`,
+        });
+      }
     } else if (eventType.endsWith('cancellation_requested')) {
       this.addNotification({
         type: 'warning',

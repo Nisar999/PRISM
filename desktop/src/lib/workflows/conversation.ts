@@ -13,7 +13,9 @@ import { providerStore } from '../providers';
 import { executionStore, notificationStore, workspaceStore } from '../store';
 import { graphEngine } from '../graph';
 import { shellUiStore } from '../shellUi';
-import { millyStore } from '../milly';
+import { millyEngine } from '../milly';
+import { settingsStore } from '../settings';
+import { voiceManager } from '../voice';
 import { runCodeModification } from './codeModification';
 
 export type ConversationIntent =
@@ -212,6 +214,8 @@ export interface ConversationStreamHandlers {
   onPrismUpdate?: (turn: ConversationTurn) => void;
   /** Called when the PRISM turn is finalized (after streaming completes). */
   onPrismFinal?: (turn: ConversationTurn) => void;
+  /** AbortSignal for cancel — wired to agent stream. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -281,7 +285,7 @@ async function runConversationTurnWith(
   });
   executionStore.applyLocalPipelineState('RUNNING', workflowSessionId);
 
-  millyStore.setPresence('thinking', 'medium', 'Milly is understanding your question…');
+  millyEngine.signalPhase('thinking', 'Understanding your question…');
   shellUiStore.setBottomTab('graph');
   shellUiStore.setRightTab('memory');
 
@@ -339,6 +343,7 @@ async function runConversationTurnWith(
       'Memory retrieval',
       'memoryManager',
       async () => {
+        millyEngine.signalPhase('searching', 'Searching memory…');
         try {
           memoryHits = await memoryManager.search({ query: message, limit: 8 });
           shellUiStore.setRightTab('memory');
@@ -355,6 +360,7 @@ async function runConversationTurnWith(
       'Context assembly',
       'workspaceManager',
       async () => {
+        millyEngine.signalPhase('reading', 'Assembling workspace context…');
         assembled = assembleContext({ message, intent, memoryHits });
       },
     );
@@ -365,7 +371,7 @@ async function runConversationTurnWith(
       stream ? 'Planner / agent stream' : 'Planner / agent invoke',
       'agentManager',
       async () => {
-        millyStore.setPresence('thinking', 'high', 'Connecting intelligence…');
+        millyEngine.signalPhase('planning', 'Connecting intelligence…');
         if (stream) {
           agentBox.response = await agentManager.invokeStream(
             {
@@ -374,6 +380,10 @@ async function runConversationTurnWith(
             },
             {
               resetExecution: false,
+              signal: handlers.signal,
+              onNodeStarted: (node) => {
+                millyEngine.signalAgentNode(node);
+              },
               onUpdate: (partial) => updatePrism(partial),
             },
           );
@@ -434,8 +444,40 @@ async function runConversationTurnWith(
     };
     handlers.onPrismFinal?.(prismTurn);
 
-    millyStore.setPresence('success', 'low', 'Response ready');
+    millyEngine.signalSuccess('Response ready');
+
+    const millySettings = settingsStore.getSnapshot().milly;
+    if (
+      millySettings.voiceEnabled &&
+      millySettings.autoSpeak &&
+      prismTurn.content &&
+      !prismTurn.error
+    ) {
+      void voiceManager.speak(prismTurn.content).catch(() => {
+        /* VoiceManager already notifies on hard failures */
+      });
+    }
   } catch (err) {
+    const aborted =
+      (err instanceof DOMException && err.name === 'AbortError') ||
+      (err instanceof Error && /abort/i.test(err.message));
+    if (aborted) {
+      millyEngine.clearOverride();
+      prismTurn = {
+        ...prismTurn,
+        content: prismTurn.content || 'Cancelled.',
+        error: 'Cancelled',
+        memoryHits: memoryHits.length,
+      };
+      handlers.onPrismFinal?.(prismTurn);
+      emit(workflowSessionId, {
+        event_type: 'session_failed',
+        message: 'Cancelled',
+        state_to: 'FAILED',
+      });
+      executionStore.applyLocalPipelineState('CANCELLED', workflowSessionId);
+      throw err;
+    }
     const errMsg = err instanceof Error ? err.message : String(err);
     prismTurn = {
       ...prismTurn,
@@ -444,6 +486,7 @@ async function runConversationTurnWith(
       memoryHits: memoryHits.length,
     };
     handlers.onPrismFinal?.(prismTurn);
+    millyEngine.signalPhase('error', errMsg);
     emit(workflowSessionId, {
       event_type: 'session_failed',
       message: errMsg,

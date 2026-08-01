@@ -13,6 +13,7 @@ Runtime resolution is install-dir relative — no PRISM_ROOT.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -22,8 +23,16 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-# Prefer D: staging to avoid filling C: during npm/playwright.
-OUT = Path(os.environ.get("PRISM_RUNTIME_OUT", str(REPO / "desktop" / "src-tauri" / "resources" / "runtime")))
+# Default: stage into the Tauri bundle resources tree (already on D: because the
+# repo lives at D:\Code_yees\PRISM). Override with PRISM_RUNTIME_OUT to stage
+# elsewhere (e.g. D:\prism-release-runtime) — then copy/sync into
+# desktop/src-tauri/resources/runtime before `tauri build`.
+OUT = Path(
+    os.environ.get(
+        "PRISM_RUNTIME_OUT",
+        str(REPO / "desktop" / "src-tauri" / "resources" / "runtime"),
+    )
+)
 BACKEND_SRC = REPO / "backend"
 NODE_SRC = REPO / ".tools" / "node24" / "node-v24.18.0-win-x64"
 
@@ -139,7 +148,7 @@ def stage_code_oss() -> None:
                 "private": True,
                 "version": "1.0.0",
                 "type": "module",
-                "dependencies": {"@vscode/test-web": "^0.0.74"},
+                "dependencies": {"@vscode/test-web": "^0.0.81"},
             },
             indent=2,
         ),
@@ -160,13 +169,33 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const port = process.env.PRISM_CODE_OSS_PORT || '8080';
-const host = process.env.PRISM_CODE_OSS_HOST || '127.0.0.1';
+// Prefer localhost — {{uuid}}.127.0.0.1 is an invalid URL and breaks the extension host
+// (blank explorer / ENOPRO). *.localhost resolves in Chromium / WebView2.
+const host = process.env.PRISM_CODE_OSS_HOST || 'localhost';
 const dataDir = path.join(__dirname, '.vscode-test-web');
 const cacheTgz = path.join(__dirname, '..', 'vscode-web-cache.tgz');
+const workspaceFolder = (process.env.PRISM_WORKSPACE_FOLDER || '').trim();
+
+function cacheComplete() {
+  if (!fs.existsSync(dataDir)) return false;
+  for (const name of fs.readdirSync(dataDir)) {
+    if (!name.startsWith('vscode-web-')) continue;
+    const root = path.join(dataDir, name);
+    const amd = path.join(root, 'out', 'vs', 'loader.js');
+    const esm = path.join(root, 'out', 'vs', 'workbench', 'workbench.web.main.internal.js');
+    const esmCss = path.join(root, 'out', 'vs', 'workbench', 'workbench.web.main.internal.css');
+    if (fs.existsSync(amd) || (fs.existsSync(esm) && fs.existsSync(esmCss))) return true;
+  }
+  return false;
+}
 
 function ensureLocalCache() {
-  const hasCache = fs.existsSync(dataDir) && fs.readdirSync(dataDir).some((n) => n.startsWith('vscode-web-'));
-  if (hasCache) return;
+  if (cacheComplete()) return;
+  // Incomplete trees block @vscode/test-web re-download (version marker present).
+  if (fs.existsSync(dataDir)) {
+    console.log('[prism-code-oss] removing incomplete vscode-web cache…');
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
   if (!fs.existsSync(cacheTgz)) return;
   console.log('[prism-code-oss] extracting bundled vscode-web cache…');
   const r = spawnSync('tar', ['-xzf', cacheTgz, '-C', __dirname], {
@@ -201,6 +230,11 @@ const args = [
   '--quality', 'stable',
   '--testRunnerDataDir', dataDir,
 ];
+// Positional folderPath → vscode-test-web FS provider mount (real Explorer + edit).
+if (workspaceFolder && fs.existsSync(workspaceFolder) && fs.statSync(workspaceFolder).isDirectory()) {
+  args.push(workspaceFolder);
+  console.log('[prism-code-oss] mounting workspace folder');
+}
 console.log('[prism-code-oss]', process.execPath, args.join(' '));
 const child = spawn(process.execPath, args, {
   cwd: __dirname,
@@ -248,69 +282,81 @@ def pack_vscode_web_cache(launcher: Path) -> None:
     print("packed", tgz, "size_mb", round(tgz.stat().st_size / (1024 * 1024), 1), flush=True)
 
 
+def _vscode_web_cache_complete(cache: Path) -> bool:
+    """Require real workbench bundles — directory / version marker alone is not enough."""
+    for p in cache.glob("vscode-web-stable-*") if cache.exists() else []:
+        amd = p / "out" / "vs" / "loader.js"
+        esm = p / "out" / "vs" / "workbench" / "workbench.web.main.internal.js"
+        esm_css = p / "out" / "vs" / "workbench" / "workbench.web.main.internal.css"
+        if amd.exists() or (esm.exists() and esm_css.exists()):
+            return True
+    return False
+
+
 def warm_vscode_web_cache(node_exe: Path, launcher: Path, env: dict) -> None:
-    """Pre-download VS Code Stable web into launcher/.vscode-test-web for offline first run."""
+    """Pre-download VS Code Stable web into launcher/.vscode-test-web for offline first run.
+
+    Uses the official web-standalone tarball (curl) instead of streaming through
+    @vscode/test-web — partial node downloads left a version marker without out/,
+    which caused a permanently blank editor (test-web skips re-download).
+    """
+    del node_exe, env  # kept for call-site compatibility
     cache = launcher / ".vscode-test-web"
-    existing = list(cache.glob("vscode-web-stable-*")) if cache.exists() else []
-    if any((p / "out").exists() or (p / "package.json").exists() for p in existing):
-        print("vscode-web cache already present", flush=True)
+
+    if _vscode_web_cache_complete(cache):
+        print("vscode-web cache already present (complete)", flush=True)
         return
 
-    cli = (
-        launcher
-        / "node_modules"
-        / "@vscode"
-        / "test-web"
-        / "out"
-        / "server"
-        / "index.js"
-    )
-    if not node_exe.exists() or not cli.exists():
-        print("skip vscode-web warm (missing node/cli)", flush=True)
-        return
+    if cache.exists():
+        print("Removing incomplete vscode-web cache…", flush=True)
+        shutil.rmtree(cache, ignore_errors=True)
 
-    print("Warming vscode-web cache (first-run download)…", flush=True)
-    cache.mkdir(parents=True, exist_ok=True)
-    log = Path("D:/tmp/vscode-warm.log")
-    with open(log, "w", encoding="utf-8") as lf:
-        proc = subprocess.Popen(
+    print("Warming vscode-web cache (official web-standalone tarball)…", flush=True)
+    Path("D:/tmp").mkdir(parents=True, exist_ok=True)
+    meta_path = Path("D:/tmp/vscode-web-stable-meta.json")
+    tar_path = Path("D:/tmp/vscode-web-stable.tar.gz")
+
+    try:
+        run(
             [
-                str(node_exe),
-                str(cli),
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "18080",
-                "--browserType",
-                "none",
-                "--quality",
-                "stable",
-                "--testRunnerDataDir",
-                str(cache),
-            ],
-            cwd=str(launcher),
-            env=env,
-            stdout=lf,
-            stderr=subprocess.STDOUT,
+                "curl",
+                "-fsSL",
+                "-o",
+                str(meta_path),
+                "https://update.code.visualstudio.com/api/update/web-standalone/stable/latest",
+            ]
         )
-        # Wait until cache has a vscode-web-stable-* tree or timeout (~4 min)
-        deadline = time.time() + 240
-        ready = False
-        while time.time() < deadline:
-            if any(cache.glob("vscode-web-stable-*")):
-                # give unzip a moment
-                time.sleep(5)
-                ready = True
-                break
-            if proc.poll() is not None:
-                break
-            time.sleep(2)
-        try:
-            proc.terminate()
-            proc.wait(timeout=10)
-        except Exception:
-            proc.kill()
-        print("vscode-web warm ready=" + str(ready) + " log=" + str(log), flush=True)
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        commit = meta["version"]
+        url = meta["url"]
+        sha256 = (meta.get("sha256hash") or "").lower()
+        print(f"stable commit={commit} url={url}", flush=True)
+
+        run(["curl", "-fL", "--retry", "5", "--retry-delay", "2", "-o", str(tar_path), url])
+        size_mb = round(tar_path.stat().st_size / (1024 * 1024), 1)
+        print(f"downloaded {size_mb} MB", flush=True)
+        if sha256:
+            digest = hashlib.sha256(tar_path.read_bytes()).hexdigest()
+            if digest != sha256:
+                raise RuntimeError(f"vscode-web sha256 mismatch: {digest} != {sha256}")
+
+        folder_name = f"vscode-web-stable-{commit}"
+        dest = cache / folder_name
+        dest.mkdir(parents=True, exist_ok=True)
+        run(["tar", "-xzf", str(tar_path), "-C", str(dest), "--strip-components=1"])
+        (dest / "version").write_text(folder_name, encoding="utf-8")
+    except Exception as exc:
+        print(f"WARNING: vscode-web warm failed: {exc}", flush=True)
+        shutil.rmtree(cache, ignore_errors=True)
+        return
+
+    ready = _vscode_web_cache_complete(cache)
+    print("vscode-web warm ready=" + str(ready), flush=True)
+    if not ready:
+        print(
+            "WARNING: vscode-web cache incomplete — editor will be blank until warm succeeds",
+            flush=True,
+        )
 
 
 def write_manifest() -> None:

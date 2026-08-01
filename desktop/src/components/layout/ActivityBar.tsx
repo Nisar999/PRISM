@@ -20,18 +20,18 @@ const ITEMS: {
   route?: string;
 }[] = [
   { id: 'explorer', title: 'Workspace', icon: Files, action: 'activity' },
-  { id: 'search', title: 'Search (Code-OSS)', icon: Search, action: 'ide' },
+  { id: 'search', title: 'Search', icon: Search, action: 'ide' },
   { id: 'agent', title: 'Agent', icon: MessageSquare, action: 'agent' },
-  { id: 'editor', title: 'Editor (Code-OSS)', icon: Code2, action: 'ide' },
-  { id: 'terminal', title: 'Terminal (Code-OSS)', icon: PanelBottom, action: 'ide' },
+  { id: 'editor', title: 'Editor', icon: Code2, action: 'ide' },
+  { id: 'terminal', title: 'Terminal', icon: PanelBottom, action: 'ide' },
   { id: 'execution', title: 'Execution output', icon: Workflow, action: 'execution' },
   { id: 'settings', title: 'Settings', icon: Settings, action: 'route', route: '/settings' },
 ];
 
 /**
  * Figma 434:2 ActivityBar — fixed 52px rail.
- * IDE surfaces (Search / Editor / Terminal) open Code-OSS at `/editor`.
- * Explorer here is PRISM workspace intelligence, not a VS Code file-tree duplicate.
+ * IDE surfaces (Search / Editor / Terminal) open PRISM IDE at `/editor`.
+ * Explorer here is PRISM workspace intelligence, not a file-tree duplicate.
  */
 export function ActivityBar() {
   const shell = useShellUi();
@@ -69,7 +69,7 @@ export function ActivityBar() {
             aria-pressed={active}
             className={cn(
               'relative flex size-10 items-center justify-center rounded-control text-prism-meta transition-colors',
-              'hover:text-white',
+              'prism-focus-ring-sm hover:text-white',
               active && 'bg-prism-fill text-white',
             )}
             onClick={() => {
@@ -79,11 +79,11 @@ export function ActivityBar() {
                 if (item.id === 'search' || item.id === 'terminal') {
                   notificationStore.addNotification({
                     type: 'info',
-                    message: item.id === 'search' ? 'Code-OSS Search' : 'Code-OSS Terminal',
+                    message: item.id === 'search' ? 'Search' : 'Terminal',
                     description:
                       item.id === 'search'
-                        ? 'Use Ctrl+Shift+F inside the editing engine for Search.'
-                        : 'Use Ctrl+` inside the editing engine for Terminal. Problems: View → Problems.',
+                        ? 'Use Ctrl+Shift+F in the IDE for Search.'
+                        : 'Use Ctrl+` in the IDE for Terminal. Problems: View → Problems.',
                   });
                 }
                 return;

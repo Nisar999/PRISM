@@ -6,6 +6,7 @@ import {
   Cpu,
   Boxes,
   ScanFace,
+  Sparkles,
   Search,
   Download,
   Upload,
@@ -18,18 +19,20 @@ import { useSettings, settingsManager, defaultSettings, type AppSettings } from 
 import { useProviders, providerManager } from '@/lib/providers';
 import { useIdentity, identityManager } from '@/lib/identity';
 import { useMemory, memoryManager } from '@/lib/memory';
+import { voiceManager, useVoice } from '@/lib/voice';
 import { shellUiStore } from '@/lib/shellUi';
 import { PRODUCT } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 
 /** Cursor-style settings categories (Mirror lives here — not Milly menu). */
-export type SettingsTab = 'general' | 'appearance' | 'models' | 'providers' | 'mirror';
+export type SettingsTab = 'general' | 'appearance' | 'models' | 'providers' | 'milly' | 'mirror';
 
 const NAV: { id: SettingsTab; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'general', label: 'General', icon: SettingsIcon },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'models', label: 'Models', icon: Cpu },
   { id: 'providers', label: 'Providers', icon: Boxes },
+  { id: 'milly', label: 'Milly', icon: Sparkles },
   { id: 'mirror', label: 'Mirror', icon: ScanFace },
 ];
 
@@ -94,8 +97,10 @@ export function SettingsPage() {
   const providers = useProviders();
   const identity = useIdentity();
   const memory = useMemory();
+  const voice = useVoice();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [voiceTesting, setVoiceTesting] = useState(false);
 
   const tabParam = params.get('tab') as SettingsTab | null;
   const [active, setActive] = useState<SettingsTab>(
@@ -595,6 +600,196 @@ export function SettingsPage() {
                       </li>
                     ))}
                   </ul>
+                ) : null}
+              </section>
+            )}
+
+            {/* —— Milly (presence + voice) —— */}
+            {(active === 'milly' || q) && (
+              <section>
+                {q ? (
+                  <h2 className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-prism-dim">
+                    Milly
+                  </h2>
+                ) : (
+                  <p className="mb-4 text-xs text-prism-meta">
+                    Cognitive presence, animations, and optional speech. Voice speaks response
+                    content only — never fabricated character dialogue. Defaults keep voice off.
+                  </p>
+                )}
+
+                {match('animation', 'motion', 'thinking') && (
+                  <Row
+                    title="Animations"
+                    description="State-driven motion on the Milly presence glyph."
+                  >
+                    <Toggle
+                      on={settings.milly.animationsEnabled}
+                      onClick={() =>
+                        void patch('milly', 'animationsEnabled', !settings.milly.animationsEnabled)
+                      }
+                    />
+                  </Row>
+                )}
+                {match('thinking', 'mascot') && (
+                  <Row
+                    title="Thinking animation"
+                    description="Show brand mascot during thinking, writing, speaking, and success."
+                  >
+                    <Toggle
+                      on={settings.milly.thinkingAnimation}
+                      onClick={() =>
+                        void patch('milly', 'thinkingAnimation', !settings.milly.thinkingAnimation)
+                      }
+                    />
+                  </Row>
+                )}
+                {match('voice', 'speech', 'speak') && (
+                  <Row
+                    title="Voice enabled"
+                    description="Allow TTS via the selected VoiceProvider (ElevenLabs first)."
+                  >
+                    <Toggle
+                      on={settings.milly.voiceEnabled}
+                      onClick={() =>
+                        void patch('milly', 'voiceEnabled', !settings.milly.voiceEnabled)
+                      }
+                    />
+                  </Row>
+                )}
+                {match('auto', 'speak') && (
+                  <Row
+                    title="Auto-speak responses"
+                    description="Speak completed conversation answers when voice is enabled."
+                  >
+                    <Toggle
+                      on={settings.milly.autoSpeak}
+                      onClick={() => void patch('milly', 'autoSpeak', !settings.milly.autoSpeak)}
+                    />
+                  </Row>
+                )}
+                {match('provider', 'elevenlabs', 'voice') && (
+                  <Row title="Voice provider" description="Abstracted registry — callers never hardcode a vendor.">
+                    <select
+                      className={cn(inputClass, 'w-56')}
+                      value={settings.milly.voiceProviderId}
+                      onChange={(e) => void patch('milly', 'voiceProviderId', e.target.value)}
+                    >
+                      {voiceManager.listProviders().map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.displayName}
+                          {p.isCloud ? ' (cloud)' : ' (local)'}
+                        </option>
+                      ))}
+                    </select>
+                  </Row>
+                )}
+                {match('elevenlabs', 'api', 'key') && (
+                  <Row title="ElevenLabs API key" description="Stored in local settings — never logged.">
+                    <input
+                      type="password"
+                      placeholder="xi-…"
+                      className={cn(inputClass, 'w-64')}
+                      value={settings.milly.voiceApiKey}
+                      onChange={(e) => void patch('milly', 'voiceApiKey', e.target.value)}
+                    />
+                  </Row>
+                )}
+                {match('voice', 'id', 'catalogue') && (
+                  <Row title="Voice" description="Select from the provider catalogue after refresh.">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        className={cn(inputClass, 'w-48')}
+                        value={settings.milly.voiceId}
+                        onChange={(e) => void patch('milly', 'voiceId', e.target.value)}
+                      >
+                        <option value="">Default</option>
+                        {voice.voices.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="rounded-control border border-border px-2 py-1.5 text-xs text-white hover:bg-white/5"
+                        onClick={() => void voiceManager.refreshVoices().catch(() => undefined)}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        disabled={voiceTesting || !settings.milly.voiceEnabled}
+                        className="rounded-control border border-prism-focus/40 bg-prism-focus/15 px-2 py-1.5 text-xs text-white disabled:opacity-40"
+                        onClick={() => {
+                          setVoiceTesting(true);
+                          void voiceManager
+                            .testVoice()
+                            .catch(() => undefined)
+                            .finally(() => setVoiceTesting(false));
+                        }}
+                      >
+                        {voiceTesting || voice.status === 'speaking' || voice.status === 'synthesizing'
+                          ? 'Speaking…'
+                          : 'Test voice'}
+                      </button>
+                      {(voice.status === 'speaking' || voice.status === 'synthesizing') && (
+                        <button
+                          type="button"
+                          className="rounded-control border border-rose-400/35 px-2 py-1.5 text-xs text-rose-100"
+                          onClick={() => voiceManager.cancel()}
+                        >
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  </Row>
+                )}
+                {match('volume') && (
+                  <Row title="Volume" description={`${Math.round(settings.milly.volume * 100)}%`}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      className="w-40"
+                      value={settings.milly.volume}
+                      onChange={(e) => void patch('milly', 'volume', Number(e.target.value))}
+                    />
+                  </Row>
+                )}
+                {match('speed', 'playback') && (
+                  <Row
+                    title="Playback speed"
+                    description={`${settings.milly.playbackSpeed.toFixed(2)}× (provider-limited)`}
+                  >
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={2}
+                      step={0.05}
+                      className="w-40"
+                      value={settings.milly.playbackSpeed}
+                      onChange={(e) => void patch('milly', 'playbackSpeed', Number(e.target.value))}
+                    />
+                  </Row>
+                )}
+                {match('debug', 'performance') && (
+                  <Row
+                    title="Milly debug"
+                    description="Expose state labels for diagnosing presence transitions."
+                  >
+                    <Toggle
+                      on={settings.milly.debug}
+                      onClick={() => void patch('milly', 'debug', !settings.milly.debug)}
+                    />
+                  </Row>
+                )}
+                {!q && settings.milly.debug ? (
+                  <p className="mt-2 font-mono text-[11px] text-prism-dim">
+                    voice status: {voice.status} · queue {voice.queueLength}
+                    {voice.error ? ` · ${voice.error}` : ''}
+                  </p>
                 ) : null}
               </section>
             )}

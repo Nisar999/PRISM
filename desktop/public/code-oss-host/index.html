@@ -1,35 +1,31 @@
-# Code-OSS Web Host (PRISM-owned)
-#
-# Embeds an unmodified Code-OSS web workbench in an iframe and translates
-# the PRISM Workspace Adapter protocol (v1) without patching vscode-main.
-#
-# Query params:
-#   workbench = absolute URL of Code-OSS web (default: http://localhost:8080/)
-#   folder    = optional folder URI to open on load
-
 <!DOCTYPE html>
+<!--
+  PRISM Editor Host
+
+  Embeds the unmodified editing-engine workbench in an iframe and translates
+  the PRISM Workspace Adapter protocol (v1) without patching upstream sources.
+
+  Query params:
+    workbench = absolute URL of the workbench (internal; never shown in UI)
+    folder    = optional folder URI to open on load
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PRISM Code-OSS Web Host</title>
+  <title>PRISM Editor</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #1e1e1e; color: #ccc; font-family: Consolas, monospace; }
+    html, body { margin: 0; height: 100%; background: #1e1e1e; color: #ccc; font-family: system-ui, sans-serif; }
     #root { display: flex; flex-direction: column; height: 100%; }
-    #banner {
-      display: none; align-items: center; gap: 10px; padding: 8px 12px;
-      background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 12px;
-    }
-    #banner.visible { display: flex; }
-    #banner a { color: #3794ff; }
-    #frame { flex: 1; border: 0; width: 100%; background: #1e1e1e; }
+    #banner { display: none; }
+    #frame { flex: 1; border: 0; width: 100%; background: #1e1e1e; min-height: 0; }
     #frame.hidden { display: none; }
   </style>
 </head>
 <body>
   <div id="root">
-    <div id="banner"></div>
-    <iframe id="frame" title="Code-OSS Web Workbench" allow="clipboard-read; clipboard-write"></iframe>
+    <div id="banner" aria-hidden="true"></div>
+    <iframe id="frame" title="PRISM Editor" allow="clipboard-read; clipboard-write"></iframe>
   </div>
   <script>
     const PROTOCOL_V = 1;
@@ -46,8 +42,11 @@
       ERROR: 'prism.editor.error',
     };
 
+    const USER_ERROR =
+      'The editor could not start. Retry, or open a workspace folder again.';
+
     const params = new URLSearchParams(location.search);
-    const defaultWorkbench = params.get('workbench') || 'http://127.0.0.1:8080/';
+    const defaultWorkbench = params.get('workbench') || 'http://localhost:8080/';
     const initialFolder = params.get('folder') || '';
 
     const state = {
@@ -55,10 +54,10 @@
       folderUri: initialFolder || null,
       ready: false,
       lastFileUri: null,
+      loadGen: 0,
     };
 
     const frame = document.getElementById('frame');
-    const banner = document.getElementById('banner');
 
     function envelope(type, payload) {
       return { v: PROTOCOL_V, type, payload };
@@ -69,20 +68,8 @@
       window.parent.postMessage(envelope(type, payload), '*');
     }
 
-    function showBanner(html) {
-      banner.innerHTML = html;
-      banner.classList.add('visible');
-    }
-
-    function hideBanner() {
-      banner.classList.remove('visible');
-      banner.innerHTML = '';
-    }
-
     function buildWorkbenchUrl(folderUri) {
       const url = new URL(state.workbenchBase);
-      // @vscode/test-web accepts folder via path / query depending on version;
-      // folderUri as query is the safest non-invasive open hint.
       if (folderUri) {
         url.searchParams.set('folder', folderUri);
       }
@@ -91,22 +78,29 @@
 
     function loadWorkbench(folderUri) {
       const next = buildWorkbenchUrl(folderUri || state.folderUri);
+      state.loadGen += 1;
+      const gen = state.loadGen;
       frame.classList.remove('hidden');
       frame.src = next;
+      // Validate assets after navigation — READY must mean a renderable workbench.
+      void validateWorkbenchAssets(gen);
     }
 
     async function probeOnce() {
-      // Code-OSS may not send CORS — no-cors still proves something answered on the port.
+      const sameOrigin =
+        state.workbenchBase.startsWith(location.origin) ||
+        state.workbenchBase.startsWith('/');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
       try {
-        await fetch(state.workbenchBase, {
+        const res = await fetch(state.workbenchBase, {
           method: 'GET',
-          mode: 'no-cors',
+          mode: sameOrigin ? 'cors' : 'no-cors',
           signal: controller.signal,
           cache: 'no-store',
         });
         clearTimeout(timer);
+        if (sameOrigin) return res.ok;
         return true;
       } catch {
         clearTimeout(timer);
@@ -115,23 +109,66 @@
     }
 
     async function probeWorkbench() {
-      const attempts = 4;
+      const attempts = 12;
       for (let i = 0; i < attempts; i++) {
         if (await probeOnce()) return true;
         if (i < attempts - 1) {
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
       return false;
     }
 
+    /** Confirm ESM or AMD workbench bundles exist (avoids false READY on blank HTML). */
+    async function workbenchAssetsOk() {
+      const base = state.workbenchBase.replace(/\/?$/, '/');
+      const candidates = [
+        'static/build/out/vs/workbench/workbench.web.main.internal.js',
+        'static/build/out/vs/workbench/workbench.web.main.js',
+        'static/build/out/vs/loader.js',
+      ];
+      for (const rel of candidates) {
+        try {
+          const res = await fetch(base + rel, { method: 'HEAD', cache: 'no-store' });
+          if (res.ok) return true;
+        } catch {
+          /* try next */
+        }
+      }
+      // HEAD may be blocked cross-origin — try GET range via no-cors probe of internal JS.
+      try {
+        const res = await fetch(base + candidates[0], {
+          method: 'GET',
+          mode: 'no-cors',
+          cache: 'no-store',
+        });
+        // opaque success means the network answered; treat as ok only if not failed.
+        return res.type === 'opaque' || res.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    async function validateWorkbenchAssets(gen) {
+      // Give the server a moment after iframe navigation.
+      await new Promise((r) => setTimeout(r, 400));
+      if (gen !== state.loadGen) return;
+      const ok = await workbenchAssetsOk();
+      if (gen !== state.loadGen) return;
+      if (!ok) {
+        post(MSG.ERROR, { message: USER_ERROR });
+        frame.classList.add('hidden');
+        return;
+      }
+      markReady();
+    }
+
     function markReady() {
       if (state.ready) return;
       state.ready = true;
-      hideBanner();
       post(MSG.READY, {
         engine: 'code-oss-web',
-        version: '1.131.0',
+        version: 'workbench',
         capabilities: {
           openWorkspace: 'navigate',
           openFile: 'partial',
@@ -139,7 +176,6 @@
           focus: true,
           monaco: true,
           extensionHost: 'workbench-managed',
-          // Constitution: these surfaces are owned by unmodified Code-OSS workbench UI.
           explorer: 'workbench',
           editorTabs: 'workbench',
           terminal: 'workbench',
@@ -159,13 +195,12 @@
         return;
       }
       state.folderUri = folderUri;
+      state.ready = false;
       loadWorkbench(folderUri);
       post(MSG.WORKSPACE_OPENED, { folderUri });
     }
 
     function openFile(payload) {
-      // Cross-origin unmodified workbench cannot accept in-memory buffers.
-      // Best-effort: navigate with vscode-file / path hint when uri looks filesystem-like.
       const uri = payload && payload.uri;
       if (!uri) {
         post(MSG.ERROR, { message: 'openFile requires uri' });
@@ -176,12 +211,12 @@
         const url = new URL(state.workbenchBase);
         if (state.folderUri) url.searchParams.set('folder', state.folderUri);
         url.searchParams.set('file', uri);
+        state.loadGen += 1;
         frame.src = url.toString();
       } catch (e) {
-        post(MSG.ERROR, { message: String(e && e.message ? e.message : e) });
+        post(MSG.ERROR, { message: USER_ERROR });
         return;
       }
-      // Active editor reporting is unavailable across origins without an extension.
       post(MSG.ACTIVE_EDITOR, {
         uri,
         language: payload.language,
@@ -190,11 +225,9 @@
       });
     }
 
+    // Do NOT mark ready on bare iframe load — error documents also fire load.
     frame.addEventListener('load', () => {
-      // load also fires for about:blank / error pages; only mark ready after probe success path.
-      if (frame.src && frame.src !== 'about:blank') {
-        markReady();
-      }
+      /* readiness confirmed via validateWorkbenchAssets */
     });
 
     window.addEventListener('message', (ev) => {
@@ -224,21 +257,18 @@
     });
 
     (async function boot() {
-      showBanner('Probing Code-OSS web at <code>' + state.workbenchBase + '</code>…');
       const up = await probeWorkbench();
       if (!up) {
-        showBanner(
-          'Code-OSS web not reachable at <code>' + state.workbenchBase + '</code>. ' +
-          'From the repo root run <code>pwsh scripts/code-oss-web.ps1</code> ' +
-          '(Docker or native), wait until port 8080 responds, then reload this page.'
-        );
-        post(MSG.ERROR, {
-          message: 'Code-OSS web workbench not reachable at ' + state.workbenchBase,
-        });
+        post(MSG.ERROR, { message: USER_ERROR });
         frame.classList.add('hidden');
         return;
       }
-      showBanner('Loading unmodified Code-OSS web workbench…');
+      const assets = await workbenchAssetsOk();
+      if (!assets) {
+        post(MSG.ERROR, { message: USER_ERROR });
+        frame.classList.add('hidden');
+        return;
+      }
       loadWorkbench(state.folderUri);
     })();
   </script>

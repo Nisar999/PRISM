@@ -1,6 +1,6 @@
 # Workflow 1 — Open Workspace
 
-**Milestone:** Beta Milestone 1  
+**Milestone:** Beta Milestone 1 (updated — Seamless PRISM IDE)  
 **Status:** Wired end-to-end via existing managers  
 **Entry:** `runOpenWorkspaceWorkflow()` in `desktop/src/lib/workflows/openWorkspace.ts`
 
@@ -9,15 +9,16 @@
 ## Sequence
 
 ```
-User (Explorer / Cmd+K / Workspace page)
-  → runOpenWorkspaceWorkflow(path)
+User (Explorer / Cmd+K / Open Folder / Launch PRISM IDE)
+  → runOpenWorkspaceWorkflow(path)   // openEditor defaults true
       → executionStore + graphEngine          (session + step nodes)
       → workspaceManager.loadProject|create  (active project)
-      → navigate /editor?folder=…            (EditorPage + Adapter)
-      → vscodeWorkspaceAdapter.openWorkspace (if host already ready)
+      → navigate /editor?folder=…            (PRISM IDE)
+      → ensureEditorRuntime (native)         (silent sidecar bring-up)
+      → vscodeWorkspaceAdapter.openWorkspace (when host READY)
       → memoryManager.search                 (IntelligenceRail Memory)
-      → agentManager.invoke                  (Thoughts + Dashboard summary)
-      → StatusBar                            (project / memory / runtime)
+      → agentManager.invoke                  (Thoughts + summary)
+      → StatusBar                            (project / memory / Editor ready)
       → graphEngine edges                    (workflow DAG)
 ```
 
@@ -29,39 +30,46 @@ User (Explorer / Cmd+K / Workspace page)
 |------|-------|--------------|
 | Choose workspace | Desktop UI | WorkspaceExplorer / commands / WorkspacePage |
 | Open project | WorkspaceManager | `loadProject` / `createProject` |
-| Open Code-OSS | Workspace Adapter | `vscodeWorkspaceAdapter.openWorkspace` |
+| Open PRISM IDE | Workspace Adapter | `vscodeWorkspaceAdapter.openWorkspace` |
 | Editor loads folder | EditorPage + EditorHost | `?folder=` + activeProject |
 | Memory search | MemoryManager | `search` → backend |
-| Project summary | AgentManager + Dashboard | `invoke` → `final_answer` |
+| Project summary | AgentManager | `invoke` → `final_answer` |
 | Thoughts panel | IntelligenceRail / ThoughtsPage | `agentStore.lastResponse` |
-| Status bar | StatusBar | `useWorkspace` / `useMemory` / `useExecution` |
+| Status bar | StatusBar | `useWorkspace` / `useMemory` / editor lifecycle |
 | Execution graph | GraphEngine + ExecutionStore | `handleRuntimeEvent` / `setEdge` |
 
 ---
 
 ## How to run
 
-1. Start backend (`uvicorn prism.main:create_app --factory …`) for memory + agent steps.
-2. `cd desktop && npm run dev`
-3. Command Palette → **Open Demo Workspace** (or sidebar **Open Demo Workspace**).
-4. Observe: `/editor` opens, Memory rail fills, Thoughts updates, StatusBar project label, Execution dock graph steps.
+### Packaged desktop
+1. Launch `PRISM Desktop.exe` (runtime services auto-start).
+2. Open Folder (or Launch PRISM IDE → Open Folder).
+3. Observe: `/editor` opens as PRISM IDE; no localhost or vendor branding.
+
+### Development
+1. Start backend for memory + agent steps.
+2. `cd desktop && npm run tauri dev` (preferred) **or** `npm run dev` + `npm run dev:code-oss`.
+3. Command Palette → **Open Folder**.
+4. Observe: `/editor` opens; StatusBar shows **Editor ready** when the host is up.
 
 ---
 
-## Missing links (known)
+## Known limitations
 
 | Gap | Notes |
 |-----|-------|
-| Full Code-OSS web on `:8080` | Host may show unreachable until `scripts/code-oss-web.ps1` succeeds |
-| Live activeEditor from workbench | Cross-origin adapter limitation (Sprint 4B) |
-| Memory empty on fresh install | Backend has no prior project memories — summary still runs from project metadata |
-| Soft-fail memory/agent | Workspace + editor still open if backend offline |
+| Editing-engine sidecar | Internal HTTP workbench may still bind on loopback — never shown in UI |
+| Live activeEditor from workbench | Cross-origin adapter limitation |
+| Memory empty on fresh install | Summary still runs from project metadata |
+| Soft-fail memory/agent | Workspace + IDE still open if backend offline |
 
 ---
 
 ## Architecture compliance
 
 - No new backend routes
-- No VS Code patches
+- No VS Code / Code-OSS product patches
 - No duplicate memory/agent logic
 - Adapter remains the only editor bridge
+- Do not rebuild Explorer / Tabs / Terminal / Problems / Search in React

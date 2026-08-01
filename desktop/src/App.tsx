@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from './components/layout/AppShell';
+import { NotificationToasts } from './components/NotificationToasts';
 import { SplashScreen, shouldShowSplash } from './components/brand/SplashScreen';
 import { Dashboard } from './pages/Dashboard';
 import { ConversationPage } from './pages/ConversationPage';
@@ -33,7 +34,12 @@ function App() {
 
   // Gate: never mount IDE/conversation shell under splash (prevents Agent flicker).
   if (splash) {
-    return <SplashScreen onDone={dismissSplash} />;
+    return (
+      <>
+        <SplashScreen onDone={dismissSplash} />
+        <NotificationToasts />
+      </>
+    );
   }
 
   return (
@@ -85,6 +91,7 @@ function App() {
           <Route path="models" element={<ArchivedRoute title="Models" redirectTo="/settings?tab=models" />} />
         </Route>
       </Routes>
+      <NotificationToasts />
     </BrowserRouter>
   );
 }

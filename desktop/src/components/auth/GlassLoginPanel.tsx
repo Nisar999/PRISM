@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import mailUrl from '@/assets/figma/landing/icon-mail.svg';
-import googleUrl from '@/assets/figma/landing/google.png';
+import googleUrl from '@/assets/figma/landing/google.svg';
 import githubUrl from '@/assets/figma/landing/github.svg';
 import lineOrL from '@/assets/figma/landing/line-or-l.svg';
 import lineOrR from '@/assets/figma/landing/line-or-r.svg';

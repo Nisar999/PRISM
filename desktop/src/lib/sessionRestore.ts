@@ -5,7 +5,7 @@
 
 import { settingsManager, settingsStore } from './settings';
 import { shellUiStore } from './shellUi';
-import { workspaceStore } from './store';
+import { notificationStore, workspaceStore } from './store';
 
 const RECENT_MAX = 12;
 
@@ -108,5 +108,10 @@ export async function restoreLastWorkspaceIfEnabled(): Promise<void> {
     });
   } catch (err) {
     console.warn('Failed to restore last workspace:', err);
+    notificationStore.addNotification({
+      type: 'warning',
+      message: 'Could not restore last workspace',
+      description: err instanceof Error ? err.message : String(err),
+    });
   }
 }

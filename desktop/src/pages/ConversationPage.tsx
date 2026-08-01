@@ -9,8 +9,11 @@ import {
 } from '@/lib/workflows/conversation';
 import { providerManager, useProviders } from '@/lib/providers';
 import { commands } from '@/lib/commands';
+import { agentManager } from '@/lib/agent';
 import { notificationStore } from '@/lib/store';
-import { settingsManager } from '@/lib/settings';
+import { settingsManager, useSettings } from '@/lib/settings';
+import { millyEngine } from '@/lib/milly';
+import { voiceManager } from '@/lib/voice';
 
 /**
  * First-class Conversation surface — Desktop-2 hub presentation (Figma 478:284).
@@ -21,20 +24,23 @@ import { settingsManager } from '@/lib/settings';
 export function ConversationPage() {
   const workspace = useWorkspace();
   const providers = useProviders();
+  const settings = useSettings();
   const navigate = useNavigate();
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const providerList = Object.values(providers.providers);
   const activeProvider = providers.activeProviderId
     ? providers.providers[providers.activeProviderId]
     : null;
   const modelLabel =
-    activeProvider?.models?.[0] ??
-    activeProvider?.name ??
+    settings.providers.preferredModel ||
+    activeProvider?.models?.[0] ||
+    activeProvider?.name ||
     'No provider';
 
   useEffect(() => {
@@ -48,52 +54,79 @@ export function ConversationPage() {
     };
   }, [workspace.activeProject?.id, workspace.activeSessionId]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [turns, busy]);
+  const cancelTurn = () => {
+    abortRef.current?.abort();
+    agentManager.cancel();
+    voiceManager.cancel();
+    millyEngine.clearOverride();
+    setBusy(false);
+  };
 
-  const submitTurn = async () => {
-    if (!draft.trim() || busy) return;
-    const text = draft.trim();
-    setDraft('');
+  const runTurn = async (text: string, prior: ConversationTurn[]) => {
     setBusy(true);
     setError(null);
+    setLastFailedMessage(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    millyEngine.signalListening(false);
+
     const optimistic: ConversationTurn = {
       id: `local_${Date.now()}`,
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
     };
-    setTurns((t) => [...t, optimistic]);
+    setTurns([...prior, optimistic]);
+
     try {
-      const result = await runConversationTurnStream(text, turns, {
+      const result = await runConversationTurnStream(text, prior, {
+        signal: controller.signal,
         onPrismStart: (turn) => {
           setTurns((t) => [...t, turn]);
         },
         onPrismUpdate: (turn) => {
-          setTurns((t) =>
-            t.map((x) => (x.id === turn.id ? { ...turn } : x)),
-          );
+          setTurns((t) => t.map((x) => (x.id === turn.id ? { ...turn } : x)));
         },
         onPrismFinal: (turn) => {
-          setTurns((t) =>
-            t.map((x) => (x.id === turn.id ? { ...turn } : x)),
-          );
+          setTurns((t) => t.map((x) => (x.id === turn.id ? { ...turn } : x)));
         },
       });
-      // Reconcile with the canonical turn list from the workflow result.
       setTurns(result.turns);
       if (result.intent === 'code_mod') {
         navigate('/review');
       }
     } catch (err) {
+      const aborted =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && /abort|cancel/i.test(err.message));
+      if (aborted) {
+        setError(null);
+        setDraft(text);
+        setTurns(prior);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setTurns((t) => t.filter((x) => x.id !== optimistic.id));
+      setLastFailedMessage(text);
+      setTurns(prior);
       setDraft(text);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
+  };
+
+  const submitTurn = async () => {
+    if (!draft.trim() || busy) return;
+    const text = draft.trim();
+    setDraft('');
+    await runTurn(text, turns);
+  };
+
+  const retryLast = async () => {
+    if (busy || !lastFailedMessage) return;
+    setDraft('');
+    await runTurn(lastFailedMessage, turns);
   };
 
   const onSubmit = async (e?: FormEvent) => {
@@ -118,12 +151,17 @@ export function ConversationPage() {
     <ChatHub
       turns={turns}
       draft={draft}
-      onDraftChange={setDraft}
+      onDraftChange={(v) => {
+        setDraft(v);
+        millyEngine.signalListening(v.trim().length > 0 && !busy);
+      }}
       onSubmit={() => void onSubmit()}
       busy={busy}
       error={error}
+      onCancel={busy ? cancelTurn : undefined}
+      onRetry={lastFailedMessage && !busy ? () => void retryLast() : undefined}
       modelLabel={modelLabel}
-      onModelClick={() => navigate('/settings')}
+      onModelClick={() => navigate('/settings?tab=providers')}
       providers={providerList.map((p) => ({
         id: p.id,
         name: p.name,
@@ -148,10 +186,10 @@ export function ConversationPage() {
         notificationStore.addNotification({
           type: 'info',
           message: 'Voice input',
-          description: 'Voice is reserved for v2 ADE — type your ask in the composer.',
+          description: 'Speech-to-text is reserved for a later milestone. Enable TTS in Settings → Milly.',
         });
+        void navigate('/settings?tab=milly');
       }}
-      bottomRef={bottomRef}
     />
   );
 }

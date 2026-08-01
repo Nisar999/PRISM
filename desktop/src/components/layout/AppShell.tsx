@@ -8,7 +8,6 @@ import { IntelligenceRail } from './IntelligenceRail';
 import { ExecutionDock } from './ExecutionDock';
 import { EditorTabBar } from './EditorTabBar';
 import { CommandPalette } from '../CommandPalette';
-import { NotificationToasts } from '../NotificationToasts';
 import { PanelResizeHandle } from '../ui/PanelResizeHandle';
 import { shellUiStore, useShellUi } from '@/lib/shellUi';
 import { useExperienceOrchestration } from '@/lib/useExperienceOrchestration';
@@ -19,7 +18,7 @@ import { persistShellLayout } from '@/lib/sessionRestore';
 /**
  * Approved IDE shell (Figma 434:2).
  *
- * On `/editor`, Code-OSS owns Explorer / Editor / Tabs / Terminal / Problems / Search.
+ * On `/editor`, the editing engine owns Explorer / Editor / Tabs / Terminal / Problems / Search.
  * Milly views (PRISM / Globe) open as PRISM center editor tabs via EditorTabBar.
  */
 export function AppShell() {
@@ -30,7 +29,7 @@ export function AppShell() {
 
   const isEditor = location.pathname.startsWith('/editor');
   const isSettings = location.pathname.startsWith('/settings');
-  /** Cursor-style settings / Code-OSS editor: collapse PRISM IDE chrome. */
+  /** Settings / PRISM IDE: collapse outer IDE chrome around the center surface. */
   const chromeCollapsed = isEditor || isSettings;
 
   const schedulePersist = useCallback(() => {
@@ -95,7 +94,7 @@ export function AppShell() {
     <div
       className="flex h-screen w-screen flex-col overflow-hidden bg-prism-editor text-foreground"
       data-name="UI"
-      data-editor-mode={isEditor ? 'code-oss' : isSettings ? 'settings' : 'prism'}
+      data-editor-mode={isEditor ? 'ide' : isSettings ? 'settings' : 'prism'}
       onDragOver={(e) => {
         e.preventDefault();
       }}
@@ -166,7 +165,6 @@ export function AppShell() {
 
       <StatusBar />
       <CommandPalette />
-      <NotificationToasts />
     </div>
   );
 }

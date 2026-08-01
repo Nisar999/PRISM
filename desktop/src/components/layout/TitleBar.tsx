@@ -4,7 +4,9 @@ import { commands } from '@/lib/commands';
 import { shellUiStore } from '@/lib/shellUi';
 import { appNavigate } from '@/lib/appNavigation';
 import { useSettings } from '@/lib/settings';
+import { useWorkspace } from '@/lib/store';
 import { MillyWorkspaceMenu } from './MillyWorkspaceMenu';
+import { WindowControls } from './WindowControls';
 import { MillyRenderer } from '@/components/MillyRenderer';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +45,12 @@ export function TitleBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const settings = useSettings();
+  const workspace = useWorkspace();
   const recent = settings.workspace.recentFolders;
+
+  const windowTitle = workspace.activeProject
+    ? `${workspace.activeProject.name} — ${PRODUCT.nameLong}`
+    : PRODUCT.nameLong;
 
   useEffect(() => {
     if (!openMenu) return;
@@ -200,13 +207,13 @@ export function TitleBar() {
 
   return (
     <header
-      className="relative flex h-10 w-full shrink-0 select-none items-center overflow-visible border-b border-white/[0.06] bg-prism-panel px-3 text-[17px] font-semibold capitalize text-prism-muted"
+      className="relative flex h-10 w-full shrink-0 select-none items-center overflow-visible border-b border-white/[0.06] bg-prism-panel pl-3 text-[17px] font-semibold capitalize text-prism-muted"
       data-tauri-drag-region
       data-name="TitleBar"
     >
       <button
         type="button"
-        className="pointer-events-auto relative z-10 mr-3 flex size-[35px] shrink-0 items-center justify-center opacity-80 hover:opacity-100"
+        className="prism-focus-ring-sm pointer-events-auto relative z-10 mr-3 flex size-[35px] shrink-0 items-center justify-center rounded opacity-80 hover:opacity-100"
         title={PRODUCT.name}
         onClick={() => {
           appNavigate('/');
@@ -233,7 +240,7 @@ export function TitleBar() {
               <button
                 type="button"
                 className={cn(
-                  'font-manrope text-[17px] font-semibold leading-none text-prism-muted transition-colors hover:text-white',
+                  'prism-focus-ring-sm rounded px-0.5 font-manrope text-[17px] font-semibold leading-none text-prism-muted transition-colors hover:text-white',
                   isOpen && 'text-white',
                 )}
                 onClick={() => setOpenMenu((v) => (v === label ? null : label))}
@@ -271,8 +278,18 @@ export function TitleBar() {
 
       <MillyWorkspaceMenu />
 
-      <div className="pointer-events-auto ml-auto flex items-center pr-1">
-        <MillyRenderer />
+      {/* Window title — centered in the remaining drag area, like VS Code. */}
+      <div className="pointer-events-none hidden min-w-0 flex-1 px-4 md:block" aria-hidden="true">
+        <p className="truncate text-center font-manrope text-[12px] font-medium normal-case tracking-[0.01em] text-prism-dim">
+          {windowTitle}
+        </p>
+      </div>
+
+      <div className="pointer-events-auto ml-auto flex h-full shrink-0 items-center">
+        <div className="flex items-center pr-2">
+          <MillyRenderer />
+        </div>
+        <WindowControls />
       </div>
     </header>
   );
@@ -294,7 +311,7 @@ function MenuItem({
       type="button"
       role="menuitem"
       title={title}
-      className="flex w-full items-center justify-between gap-6 px-3 py-1.5 text-left font-manrope text-[13px] font-medium normal-case text-prism-muted hover:bg-white/5 hover:text-white"
+      className="prism-focus-ring-sm flex w-full items-center justify-between gap-6 px-3 py-1.5 text-left font-manrope text-[13px] font-medium normal-case text-prism-muted hover:bg-white/5 hover:text-white"
       onClick={onClick}
     >
       <span className="truncate">{label}</span>

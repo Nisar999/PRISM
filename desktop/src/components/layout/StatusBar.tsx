@@ -6,7 +6,7 @@ import { useCodeReview } from '@/lib/codeReviewStore';
 import { PRODUCT } from '@/lib/brand';
 import { vscodeWorkspaceAdapter } from '@/editor';
 
-/** Figma 434:2 StatusBar — 24px. Includes Code-OSS adapter live state. */
+/** Figma 434:2 StatusBar — 24px. Includes PRISM IDE adapter live state. */
 export function StatusBar() {
   const kernel = useKernel();
   const execution = useExecution();
@@ -51,11 +51,11 @@ export function StatusBar() {
 
   const editorLabel =
     editor.lifecycle === 'ready'
-      ? editor.activeEditor?.title ?? editor.activeEditor?.uri?.split('/').pop() ?? 'Code-OSS ready'
+      ? editor.activeEditor?.title ?? editor.activeEditor?.uri?.split('/').pop() ?? 'Editor ready'
       : editor.lifecycle === 'error'
-        ? 'Code-OSS offline'
+        ? 'Editor offline'
         : editor.lifecycle === 'loading'
-          ? 'Code-OSS…'
+          ? 'Editor…'
           : null;
 
   const editorTone =

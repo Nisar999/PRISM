@@ -444,5 +444,242 @@ Frontend (`tsc && vite build`), desktop (`tauri build --no-bundle`), backend (`u
 
 **Removed:** None. No source code, runtime behavior, or frozen architecture documents were modified. No dependencies were added or removed.
 
+---
+
+## 10. PRISM v1 Stable — Desktop Shell & Foundation
+
+**Date:** 2026-08-01  
+**Scope:** Parts 1–9 of the v1 Stable shell milestone (design fidelity, window chrome, splash/auth, landing typography, Conversation Hub, notifications, brand assets, Code-OSS foundation, quality).  
+**Constraint:** Architecture frozen. No new managers/stores/workflows. Clerk deferred (ADR #1/#3).
+
+### 10.1 Architectural decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Clerk / cloud OAuth **not** integrated in v1 | Violates frozen ADR #1 (local-first) and ADR #3 (identity before authentication); Tauri WebView OAuth requires system-browser + deep-link PKCE that Clerk does not provide as a desktop SDK. Documented in `docs/AUTHENTICATION.md`. Provider abstraction reserved for v2. |
+| Local `AuthenticationService` remains shipping auth | Already production-quality (PBKDF2 verifier, AES-GCM device-bound sessions). DEV-only `Continue as Developer` creates a real `prism_dev` session. |
+| Notifications stay on existing `notificationStore` | Extended (progress type, queue, dismiss, enableNotifications wiring) rather than introducing a second toast system. Mounted at `App` so splash/auth toasts are visible. |
+| Window controls via Tauri window API | Undecorated window (`decorations: false`) + custom VS Code-style controls. Capabilities granted in `default.json`. |
+| Code-OSS always loaded through `/code-oss-host/` | Raw `VITE_CODE_OSS_URL` previously skipped the protocol host → READY never arrived. URL is now the workbench target only. |
+
+### 10.2 Files added
+
+| File | Purpose |
+|------|---------|
+| `desktop/src/components/layout/WindowControls.tsx` | Minimize / maximize–restore / close |
+| `desktop/src/assets/figma/landing/google.svg` | Missing Google mark (was breaking production build) |
+| `assets/reference/**` + `README.md` | Design-time reference asset tree |
+| `docs/AUTHENTICATION.md` | Auth architecture + Clerk tradeoff evaluation |
+
+### 10.3 Files modified (high-signal)
+
+| Area | Files |
+|------|-------|
+| Window chrome | `TitleBar.tsx`, `capabilities/default.json`, `MillyWorkspaceMenu.tsx` |
+| Notifications | `store.ts` (progress + enable), `NotificationToasts.tsx`, `App.tsx`, `AppShell.tsx`, `index.css`, `sessionRestore.ts`, `WorkspaceExplorer.tsx` |
+| Landing typography | `ShapesAccent.tsx`, `HeroPanel.tsx` |
+| Auth / splash | `SplashScreen.tsx`, `AuthScreen.tsx`, `GlassLoginPanel.tsx` |
+| Conversation Hub | `ChatHub.tsx`, `ConversationTurnCard.tsx`, `ConversationPage.tsx` |
+| Code-OSS | `EditorHost.tsx`, `vscodeWorkspaceAdapter.ts`, `public/code-oss-host/index.html`, `openWorkspace.ts`, `package.json` (`dev:code-oss`), `.env.example`, staged `launcher/start.mjs` |
+| Fidelity / a11y | `ActivityBar.tsx`, `EditorWelcome.tsx`, `BRAND_ASSETS.md` |
+
+### 10.4 Quality evidence
+
+| Surface | Result |
+|---------|--------|
+| Frontend `tsc && vite build` | ✅ Pass |
+| Backend import (`prism.main`, agent routes, graph) | ✅ Pass (project `.venv`) |
+| Desktop `build:desktop` (`tauri build --no-bundle` + copy) | ✅ Pass → `build/latest/PRISM Desktop.exe` (~18.9 MB) |
+
+### 10.5 Remaining blockers
+
+1. **Packaged Code-OSS cache** — `vscode-web-cache.tgz` is not yet warmed. Run `npm run stage:runtime` before `release:installer`. Launcher `node_modules` is staged locally; first packaged run without the cache will download VS Code Stable on the fly.
+2. **Dev Code-OSS still manual** — `npm run dev:code-oss` (or `pwsh scripts/code-oss-web.ps1`) must run beside Vite. Packaged mode auto-starts via `ensure_runtime_services`.
+3. **Vendored `vscode-main` web not compiled** — native `code-oss-web.ps1` path needs `compile-web` / Docker; Docker image Node 20 vs `.nvmrc` 24.18.0 remains a soft inconsistency.
+4. **Cross-origin editor control** — `openFile` / `activeEditor` remain partial across origins by design (constitution: unmodified Code-OSS owns editing UX). Full IPC requires a future Code-OSS extension, out of this milestone.
+
+### 10.6 Screenshots
+
+Not captured in this agent session. Recommended manual capture after `npm run tauri dev` + `npm run dev:code-oss`: splash CTA, auth panel with DEV button, Conversation Hub empty + streaming, TitleBar window controls, editor loading/error/retry overlays, bottom-right notification stack.
+
+---
+
+## 11. Milly Intelligence — Production Operating Interface
+
+**Date:** 2026-08-01  
+**Scope:** Parts 1–9 of the Milly Intelligence milestone (identity, event-driven state machine, animation, voice abstraction + ElevenLabs, memory awareness, conversation UX, provider awareness, settings, quality).  
+**Constraint:** Architecture frozen. Reuse Manager → Store → Hook. No Desktop/Browser Agent, Plugin SDK, Workflow Engine, or Distributed Agents.
+
+### 11.1 Architectural decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Single Milly implementation (`millyEngine` + `millyStore` + `MillyRenderer`) | ADR #8: Milly is cognitive presence, not a chatbot. Removed obsolete `setPresence` call sites; workflows signal via `millyEngine` only. `millyViews.ts` is PRISM/Globe pane routing — not a second Milly. |
+| Event-driven presence FSM (no fake settle timers) | States map from Kernel/execution/agent/memory/provider stores + explicit conversation/voice signals. Success settles when `MillyRenderer` reports burst animation end (`acknowledgeSuccessAnimation`). |
+| Optional voice as settings-gated ADE advance | ADR #8 / Product Constitution reserved voice for v2; this milestone authorizes **optional TTS of response content** (never character dialogue). Defaults: `voiceEnabled=false`, `autoSpeak=false`. |
+| `VoiceProvider` / `VoiceRegistry` / `VoiceManager` | Callers never hardcode ElevenLabs. Local TTS can register later without caller changes. |
+| Memory awareness from existing Memory Engine | `readAwareness()` + conversation `memoryManager.search` — no fabricated memory. |
+| Provider awareness via `providerStore` / `ProviderManager` | No duplicate provider manager. Model label prefers `settings.providers.preferredModel`. |
+| AbortSignal through `api.streamAgent` → `agentManager.invokeStream` | Cancel is event-driven (AbortController), not timers. |
+
+### 11.2 Files added
+
+| File | Purpose |
+|------|---------|
+| `desktop/src/lib/voice.ts` | VoiceProvider, VoiceRegistry, ElevenLabsVoiceProvider, VoiceManager, voiceStore, useVoice |
+| `desktop/src/components/workspace/PrismMarkdown.tsx` | Lightweight markdown (fenced code, lists, inline) for conversation turns |
+
+### 11.3 Files modified (high-signal)
+
+| Area | Files |
+|------|-------|
+| Milly FSM + awareness | `desktop/src/lib/milly.ts` |
+| Milly renderer + CSS | `desktop/src/components/MillyRenderer.tsx`, `desktop/src/index.css` |
+| Settings schema + UI | `desktop/src/lib/settings.ts`, `desktop/src/pages/Settings.tsx` (new **Milly** tab) |
+| Conversation + cancel/retry | `desktop/src/lib/workflows/conversation.ts`, `ConversationPage.tsx`, `ChatHub.tsx`, `CommandComposer.tsx`, `ConversationTurnCard.tsx` |
+| Agent stream abort | `desktop/src/lib/agent.ts`, `desktop/src/lib/api.ts` |
+| Code mod presence | `desktop/src/lib/workflows/codeModification.ts` |
+| Bootstrap | `desktop/src/main.tsx` (side-effect import of voice registry) |
+
+### 11.4 Files removed
+
+None. Obsolete `millyStore.setPresence` API was replaced (not a separate file). No duplicate Milly asset packages were deleted — brand mascot remains `brandAssets.milly` (`Milly_Mascot.png`).
+
+### 11.5 Services added
+
+| Service | Pattern |
+|---------|---------|
+| `VoiceManager` + `voiceStore` + `useVoice` | Manager → Store → Hook (extends existing pattern) |
+| `VoiceRegistry` / `VoiceProvider` | Pluggable providers; ElevenLabs registered at construction |
+
+### 11.6 Technical debt
+
+1. ElevenLabs streaming is synthesize-then-play (blob), not true chunked audio streaming to the Web Audio API.
+2. No local TTS provider yet (abstraction ready).
+3. Speech-to-text / mic input still deferred (composer mic routes to Milly settings).
+4. `PrismMarkdown` is intentionally dependency-free — not full CommonMark/GFM.
+5. Cognitive override drop when pipeline returns to idle while agent is not invoking can race with multi-step workflows if a step leaves pipeline idle mid-turn (conversation keeps pipeline RUNNING until completion).
+
+### 11.7 Remaining blockers
+
+1. **ElevenLabs API key required** for live TTS — configure in Settings → Milly.
+2. **Network egress** to `api.elevenlabs.io` must be allowed on the host.
+3. Packaged Code-OSS / installer blockers from §10.5 unchanged.
+
+### 11.8 Manual verification performed
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit` (desktop) | ✅ |
+| `npm run build` (desktop frontend) | ✅ |
+| Backend `import prism` (project `.venv`) | ✅ |
+| `npm run build:desktop` → `build/latest/PRISM Desktop.exe` | ✅ Pass |
+| Voice / animation / conversation / memory / providers runtime | Launch desktop exe; enable voice only with a real key; confirm Milly state chip, Stop/Retry, Settings → Milly persistence |
+
+### 11.9 Explicitly out of scope (stopped)
+
+Desktop Agent · Browser Agent · Plugin SDK · Workflow Engine · Distributed Agents
+
+---
+
+## 12. Seamless PRISM IDE (Option 1)
+
+**Date:** 2026-08-02  
+**Scope:** Constitution-compliant seamless IDE — remove user-visible editing-engine seams; Open Workspace → PRISM IDE; silent runtime ensure; package warmed workbench cache.  
+**Constraint:** Do **not** rebuild Explorer / Tabs / Terminal / Problems / Search / Monaco in React. Adapter remains the only bridge.
+
+### 12.1 Architectural decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Option 1 — invisible editing engine | Product Constitution + DESKTOP_SHELL: engine owns IDE primitives; PRISM owns chrome |
+| Default `openEditor: true` | Open Folder enters `/editor` as one product surface — no separate “Launch Code-OSS” stage |
+| Sanitize all user-facing errors | Never show localhost, `:8080`, vendor names, or script paths |
+| Silent `ensureEditorRuntime` | Packaged Tauri `ensure_runtime_services`; EditorHost ensures before iframe attach |
+| Loopback sidecar retained internally | Same-origin static workbench not this milestone; product must not expose it |
+| Warm `vscode-web-cache.tgz` | Avoid first-run download / MAX_PATH issues in installer path |
+
+### 12.2 Files added
+
+| File | Purpose |
+|------|---------|
+| `desktop/src/lib/ensureEditorRuntime.ts` | Native ensure wrapper (silent) |
+
+### 12.3 Files modified
+
+| Area | Files |
+|------|-------|
+| Flow | `openWorkspace.ts`, `ChatHub.tsx`, `WORKFLOW_OPEN_WORKSPACE.md` |
+| Branding / UX | `EditorHost.tsx`, `EditorPage.tsx`, `ActivityBar.tsx`, `StatusBar.tsx`, `defaultCommands.ts`, `AppShell.tsx`, `public/code-oss-host/index.html` |
+| Adapter | `vscodeWorkspaceAdapter.ts` (`sanitizeEditorError`) |
+| Bootstrap | `main.tsx` |
+| Docs | `DESKTOP_SHELL.md`, `VSCODE_INTEGRATION_STATUS.md`, this audit |
+| Packaging | `src-tauri/resources/runtime/` synced + `vscode-web-cache.tgz` |
+
+### 12.4 Files removed
+
+None (proof bridge retained for `VITE_EDITOR_HOST=bridge`).
+
+### 12.5 Migration from previous integration
+
+| Before | After |
+|--------|-------|
+| Open Workspace stayed on Conversation; separate Launch IDE | Open Workspace navigates to `/editor` by default |
+| UI: “Code-OSS”, localhost, `pwsh scripts/…` | PRISM IDE / Editor ready / sanitized errors |
+| Manual `dev:code-oss` as implied product step | Developer-only; packaged/native auto-ensure |
+| Missing `vscode-web-cache.tgz` | Warmed (~48.4 MB complete Stable web) and synced into Tauri resources |
+
+### 12.6 Performance
+
+- Removed fixed 1.5s sleep in `main.tsx` after ensure (host probe + READY are event-driven).
+- EditorHost ensures runtime once per attach/retry before loading iframe.
+- Host probe retries increased (silent) for post-spawn bind races.
+
+### 12.7 Remaining limitations
+
+1. Internal HTTP sidecar may still bind on loopback — invisible to users, not eliminated.
+2. Cross-origin `openFile` / live `activeEditor` remain partial without a workbench extension.
+3. Upstream workbench product chrome inside the iframe may still say “Code - OSS” / “VS Code for the Web” until a future zero-patch embedder `create()` / product overlay (constitution forbids forking `product.json` as PRISM branding).
+4. Full NSIS installer still uses `release:installer` after stage; `build:desktop` is no-bundle exe copy.
+5. Opening a workspace remounts the sidecar with `PRISM_WORKSPACE_FOLDER` (brief restart) so the FS provider can serve Explorer.
+
+### 12.8 Manual verification
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit` / `npm run build` | ✅ |
+| Complete `vscode-web-cache.tgz` | ✅ ~48.4 MB (SHA256-verified Stable web-standalone) |
+| Sidecar HTML uses ESM (`workbench.web.main.internal.js`) | ✅ `@vscode/test-web@0.0.81` |
+| Playwright: workbench / Explorer / App.tsx open | ✅ (localhost + folder mount) |
+| `npm run build:desktop` → `build/latest/PRISM Desktop.exe` | ✅ (~18 MB) + runtime synced |
+
+### 12.9 Explicitly out of scope
+
+Desktop Agent · Browser Agent · Plugin SDK · Workflow Engine · Distributed Agents · React IDE primitive rebuild · same-origin static workbench without sidecar
+
+### 12.10 Blank-editor regression (READY but empty surface)
+
+**Symptom:** Runtime reported ready / Editor Ready; IDE region stayed blank.
+
+**Root causes (stacked):**
+
+1. **Incomplete vscode-web cache** — warm stopped when a `vscode-web-stable-*` folder appeared; tarball stream was killed mid-download. Folder contained `version` + extensions only (~10.7 MB tgz), **no** `out/vs/workbench/*`. `@vscode/test-web` then skipped re-download because `version` existed → permanent AMD/ESM 404s.
+2. **AMD vs ESM mismatch** — older `@vscode/test-web` (0.0.74) served AMD HTML (`loader.js`); Stable 1.131 ships ESM-only (`workbench.web.main.internal.js`).
+3. **False READY** — host treated iframe `load` as ready even when assets 404’d.
+4. **Extension host URL** — binding on `127.0.0.1` produced `http://{{uuid}}.127.0.0.1:8080/...` (invalid URL) → LocalWebWorker failed → ENOPRO / empty Explorer even after assets fixed.
+5. **No local FS mount** — `file://` folder URIs do not work in the web workbench; need positional `folderPath` → `vscode-test-web://mount/`.
+
+**Fixes:**
+
+| Fix | Where |
+|-----|--------|
+| Warm via official `web-standalone` tarball + SHA256; require ESM/AMD bundles before packing | `scripts/stage-runtime.py` |
+| `@vscode/test-web` ^0.0.81 | staged `package.json` + all runtime launchers (0.0.74 AMD HTML = blank) |
+| `cacheComplete()` before accepting/extracting cache; wipe incomplete trees | `start.mjs` |
+| Host probes ESM/AMD asset HEAD before READY | `code-oss-host/index.html` |
+| Default host `localhost`; pass `PRISM_WORKSPACE_FOLDER` | `start.mjs`, `lib.rs` |
+| `mount_editor_workspace` remounts sidecar; Open Workspace uses `vscode-test-web://mount/` | `lib.rs`, `ensureEditorRuntime.ts`, `openWorkspace.ts` |
+
+**Verification:** Do not trust status strings. Confirm Explorer lists files, a tab shows source (e.g. `App.tsx`), Monaco is interactive.
 
 

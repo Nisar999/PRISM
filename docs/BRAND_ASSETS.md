@@ -15,9 +15,13 @@ assets/
 ├── icons/        # Custom SVG icons, desktop app icons, window controls, and favicon builds
 ├── milly/        # Visual state animations and configuration assets for Milly
 ├── splash/       # Launch and loading screen animation sequences or image files
-└── wallpapers/   # High-resolution visual backgrounds for main workspaces or developer setups
+├── wallpapers/   # High-resolution visual backgrounds for main workspaces or developer setups
+└── reference/    # Design-time hand-off only (Figma exports, explorations) — NEVER runtime-imported
 ```
 
+Runtime assets live under `desktop/src/assets/` (Vite-bundled) and `desktop/public/`
+(served as-is). See [`assets/reference/README.md`](../assets/reference/README.md) for
+how to organize and promote design references.
 ---
 
 ## 2. Logo System

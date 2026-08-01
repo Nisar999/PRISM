@@ -1,4 +1,5 @@
-import { PanelBottom, PanelRight } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { AlertTriangle, PanelBottom, PanelRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import glowCenter from '@/assets/figma/workspace/glow-center.svg';
 import glowCorner from '@/assets/figma/workspace/glow-corner.svg';
@@ -13,6 +14,7 @@ import { ToolbarSelect } from '@/components/ui/ToolbarSelect';
 import { ConversationTurnCard } from '@/components/workspace/ConversationTurnCard';
 import { LoadingState } from '@/components/brand/LoadingState';
 import { shellUiStore, useShellUi } from '@/lib/shellUi';
+import { commands } from '@/lib/commands';
 import type { ConversationTurn } from '@/lib/workflows/conversation';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,8 @@ export interface ChatHubProps {
   onSubmit: () => void;
   busy: boolean;
   error: string | null;
+  onCancel?: () => void;
+  onRetry?: () => void;
   modelLabel: string;
   onModelClick?: () => void;
   providers?: { id: string; name: string; status?: string }[];
@@ -33,7 +37,6 @@ export interface ChatHubProps {
   onWorktreeClick?: () => void;
   onBranchClick?: () => void;
   onMicClick?: () => void;
-  bottomRef?: React.RefObject<HTMLDivElement | null>;
   className?: string;
 }
 
@@ -48,6 +51,8 @@ export function ChatHub({
   onSubmit,
   busy,
   error,
+  onCancel,
+  onRetry,
   modelLabel,
   onModelClick,
   providers,
@@ -58,12 +63,39 @@ export function ChatHub({
   onWorktreeClick,
   onBranchClick,
   onMicClick,
-  bottomRef,
   className,
 }: ChatHubProps) {
   const navigate = useNavigate();
   const shell = useShellUi();
   const empty = turns.length === 0 && !busy;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  /** Whether the transcript is pinned to the bottom (auto-follow streaming). */
+  const pinnedRef = useRef(true);
+  const prevCountRef = useRef(turns.length);
+
+  const lastTurn = turns.length > 0 ? turns[turns.length - 1] : null;
+  /** Between submit and the first streamed token. */
+  const awaitingResponse = busy && lastTurn?.role === 'user';
+  /** The PRISM turn currently receiving streamed content. */
+  const streamingTurnId = busy && lastTurn?.role === 'prism' ? lastTurn.id : null;
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+
+  useEffect(() => {
+    const added = turns.length > prevCountRef.current;
+    const lastIsUser = turns[turns.length - 1]?.role === 'user';
+    prevCountRef.current = turns.length;
+    // Always follow the user's own message; otherwise only when pinned.
+    if ((added && lastIsUser) || pinnedRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [turns, busy]);
 
   return (
     <div
@@ -103,7 +135,15 @@ export function ChatHub({
             </IconButton>
           </>
         ) : null}
-        <LaunchIdeButton onClick={() => navigate('/editor')} />
+        <LaunchIdeButton
+          onClick={() => {
+            if (worktreeLabel && worktreeLabel !== 'Open Workspace' && worktreeLabel !== 'New Worktree') {
+              navigate('/editor');
+              return;
+            }
+            void commands.execute('workspace:open');
+          }}
+        />
       </div>
 
       <div className="relative z-[1] flex h-full flex-col">
@@ -149,16 +189,42 @@ export function ChatHub({
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-16 pb-4 md:px-12">
-              <div className="mx-auto max-w-3xl space-y-4">
+            <div
+              ref={scrollRef}
+              onScroll={onScroll}
+              className="min-h-0 flex-1 overflow-y-auto px-6 pt-16 pb-4 md:px-12"
+            >
+              <div className="mx-auto max-w-[720px] space-y-4">
                 {turns.map((turn) => (
-                  <ConversationTurnCard key={turn.id} turn={turn} />
+                  <ConversationTurnCard
+                    key={turn.id}
+                    turn={turn}
+                    streaming={turn.id === streamingTurnId}
+                  />
                 ))}
-                {busy && <LoadingState kind="milly" />}
+                {awaitingResponse && <LoadingState kind="milly" />}
                 {error && (
-                  <p className="rounded-md border border-destructive/30 p-2 text-xs text-destructive">
-                    {error}
-                  </p>
+                  <div
+                    className="prism-enter-up flex items-start gap-2.5 rounded-xl border border-rose-500/25 bg-rose-500/[0.07] p-3 text-[13px]"
+                    role="alert"
+                  >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-manrope font-semibold text-rose-200">
+                        PRISM couldn&apos;t respond
+                      </p>
+                      <p className="mt-0.5 break-words font-manrope text-rose-200/75">{error}</p>
+                      {onRetry ? (
+                        <button
+                          type="button"
+                          onClick={onRetry}
+                          className="mt-2 rounded-control border border-rose-400/30 px-2.5 py-1 font-manrope text-[12px] text-rose-100 hover:bg-rose-500/20"
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 )}
                 <div ref={bottomRef} />
               </div>
@@ -175,6 +241,7 @@ export function ChatHub({
                   activeProviderId={activeProviderId}
                   onSelectProvider={onSelectProvider}
                   busy={busy}
+                  onCancel={onCancel}
                   onMicClick={onMicClick}
                 />
                 <div className="mt-2 flex items-center justify-center gap-4">

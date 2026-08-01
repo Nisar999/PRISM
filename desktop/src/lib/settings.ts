@@ -45,6 +45,21 @@ export interface AppSettings {
     openPanes: string[];
     activePane: string | null;
   };
+  /** Milly cognitive presence + optional voice (settings-gated). */
+  milly: {
+    animationsEnabled: boolean;
+    thinkingAnimation: boolean;
+    autoSpeak: boolean;
+    voiceEnabled: boolean;
+    voiceProviderId: string;
+    voiceId: string;
+    voiceApiKey: string;
+    /** 0–1 */
+    volume: number;
+    /** 0.5–2 */
+    playbackSpeed: number;
+    debug: boolean;
+  };
 }
 
 export const defaultSettings: AppSettings = {
@@ -82,6 +97,18 @@ export const defaultSettings: AppSettings = {
     openPanes: [],
     activePane: null,
   },
+  milly: {
+    animationsEnabled: true,
+    thinkingAnimation: true,
+    autoSpeak: false,
+    voiceEnabled: false,
+    voiceProviderId: 'elevenlabs',
+    voiceId: '',
+    voiceApiKey: '',
+    volume: 0.85,
+    playbackSpeed: 1,
+    debug: false,
+  },
 };
 
 // --- Settings Store ---
@@ -114,6 +141,7 @@ class SettingsManager {
           const parsed = JSON.parse(raw) as AppSettings;
           const merged = this.mergeDefaults(parsed);
           settingsStore.setSettings(merged);
+          notificationStore.setEnabled(merged.general.enableNotifications);
           return merged;
         }
       }
@@ -121,6 +149,7 @@ class SettingsManager {
       console.warn('Failed to load settings from storage, using defaults:', err);
     }
     settingsStore.setSettings(defaultSettings);
+    notificationStore.setEnabled(defaultSettings.general.enableNotifications);
     return defaultSettings;
   }
 
@@ -138,6 +167,7 @@ class SettingsManager {
         window.localStorage.setItem(this.STORAGE_KEY, JSON.stringify(settings));
       }
       settingsStore.setSettings(settings);
+      notificationStore.setEnabled(settings.general.enableNotifications);
 
       // Side Effect 1: Update preferred provider if changed
       const currentActive = providerManager.getActiveProvider();
@@ -195,6 +225,12 @@ class SettingsManager {
     }
     if (!settings.providers.preferredProviderId) {
       return 'Preferred Provider ID cannot be empty.';
+    }
+    if (settings.milly.volume < 0 || settings.milly.volume > 1) {
+      return 'Milly voice volume must be between 0 and 1.';
+    }
+    if (settings.milly.playbackSpeed < 0.5 || settings.milly.playbackSpeed > 2) {
+      return 'Milly playback speed must be between 0.5 and 2.';
     }
     return null;
   }
@@ -256,6 +292,7 @@ class SettingsManager {
           ? loaded.session.openPanes
           : defaultSettings.session.openPanes,
       },
+      milly: { ...defaultSettings.milly, ...loaded.milly },
     };
   }
 

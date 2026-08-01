@@ -48,7 +48,7 @@ export function MillyWorkspaceMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          'inline-flex items-center gap-1 font-manrope text-[17px] font-semibold leading-none',
+          'prism-focus-ring-sm inline-flex items-center gap-1 rounded px-0.5 font-manrope text-[17px] font-semibold leading-none',
           'text-prism-muted transition-colors hover:text-white',
           open && 'text-white',
         )}

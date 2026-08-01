@@ -50,11 +50,30 @@ class AgentStore extends Store<AgentState> {
       error: message,
     });
   }
+
+  setCancelled(): void {
+    this.updateState({
+      status: 'idle',
+      error: null,
+    });
+  }
 }
 
 export const agentStore = new AgentStore();
 
 class AgentManager {
+  private abortController: AbortController | null = null;
+
+  /** Cancel an in-flight agent stream (event-driven; no fake timers). */
+  cancel(): void {
+    this.abortController?.abort();
+    this.abortController = null;
+    const snap = agentStore.getSnapshot();
+    if (snap.status === 'invoking') {
+      agentStore.setCancelled();
+    }
+  }
+
   /**
    * Invoke the real backend agent graph.
    * Mirrors progress into ExecutionStore so the existing dashboard stays event-shaped
@@ -118,8 +137,19 @@ class AgentManager {
       resetExecution?: boolean;
       onNodeStarted?: (node: string) => void;
       onUpdate?: (partial: Partial<AgentInvokeResponse>) => void;
+      signal?: AbortSignal;
     },
   ): Promise<AgentInvokeResponse> {
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
+    if (opts?.signal) {
+      if (opts.signal.aborted) controller.abort();
+      else {
+        opts.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
     const sessionId = request.session_id ?? crypto.randomUUID();
     agentStore.setInvoking(request.message, sessionId);
     if (opts?.resetExecution !== false) {
@@ -136,6 +166,7 @@ class AgentManager {
           session_id: request.session_id ?? sessionId,
         },
         {
+          signal: controller.signal,
           onNodeStarted: (node) => {
             opts?.onNodeStarted?.(node);
           },
@@ -163,6 +194,11 @@ class AgentManager {
 
       return final;
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        agentStore.setCancelled();
+        executionStore.applyLocalPipelineState('CANCELLED', sessionId);
+        throw err;
+      }
       const message = err instanceof Error ? err.message : String(err);
       agentStore.setFailed(message);
       executionStore.applyLocalPipelineState('FAILED', sessionId);
@@ -172,6 +208,8 @@ class AgentManager {
         description: message,
       });
       throw err;
+    } finally {
+      if (this.abortController === controller) this.abortController = null;
     }
   }
 }

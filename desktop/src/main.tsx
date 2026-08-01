@@ -11,12 +11,14 @@ import { settingsManager } from "@/lib/settings";
 import { pluginManager } from "@/lib/plugins";
 import { memoryManager } from "@/lib/memory";
 import { layoutManager } from "@/lib/layout";
+import "@/lib/voice"; // register VoiceManager + ElevenLabs provider
 import {
   hydrateOpenPanesFromSettings,
   hydrateShellFromSettings,
   restoreLastWorkspaceIfEnabled,
 } from "@/lib/sessionRestore";
 import { isNativeDesktop } from "@/lib/nativeFolder";
+import { ensureEditorRuntime } from "@/lib/ensureEditorRuntime";
 
 // Bootstrap the real-time websocket and client stores
 initializeStateLayer();
@@ -27,11 +29,8 @@ registerDefaultCommands();
 async function ensureNativeRuntime(): Promise<void> {
   if (!(await isNativeDesktop())) return;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const result = await invoke<Record<string, string>>("ensure_runtime_services");
+    const result = await ensureEditorRuntime();
     console.info("Runtime services:", result);
-    // Brief settle so Open Folder → editor can hit a live Code-OSS host.
-    await new Promise((r) => setTimeout(r, 1500));
   } catch (err) {
     console.warn("Runtime service ensure skipped:", err);
   }

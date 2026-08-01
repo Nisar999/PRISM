@@ -341,6 +341,7 @@ export class PrismApiClient {
       onNodeStarted?: (node: string) => void;
       onNodeUpdated?: (node: string, partial: Partial<AgentInvokeResponse>) => void;
       onError?: (message: string) => void;
+      signal?: AbortSignal;
     } = {},
   ): Promise<AgentInvokeResponse> {
     const url = `${API_BASE_URL}/agent/stream`;
@@ -348,6 +349,7 @@ export class PrismApiClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(body),
+      signal: handlers.signal,
     });
     if (!response.ok || !response.body) {
       const detail = `${response.status} ${response.statusText}`;
@@ -358,6 +360,11 @@ export class PrismApiClient {
     const decoder = new TextDecoder();
     let buffer = '';
     let final: AgentInvokeResponse | null = null;
+
+    const onAbort = () => {
+      void reader.cancel();
+    };
+    handlers.signal?.addEventListener('abort', onAbort);
 
     // SSE frames are separated by a blank line. Each frame has `event:` and `data:` lines.
     const parseFrame = (frame: string): void => {
@@ -396,23 +403,30 @@ export class PrismApiClient {
       }
     };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      // Frames are separated by \n\n
-      while ((sep = buffer.indexOf('\n\n')) >= 0) {
-        const frame = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        if (frame.trim()) parseFrame(frame);
+    try {
+      while (true) {
+        if (handlers.signal?.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        // Frames are separated by \n\n
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          if (frame.trim()) parseFrame(frame);
+        }
       }
-    }
 
-    if (final) return final;
-    // If the stream closed without a `final` event, build a minimal response from
-    // whatever the caller accumulated — surface as an error so the UI can react.
-    throw new Error('Agent stream closed without a final response.');
+      if (final) return final;
+      // If the stream closed without a `final` event, build a minimal response from
+      // whatever the caller accumulated — surface as an error so the UI can react.
+      throw new Error('Agent stream closed without a final response.');
+    } finally {
+      handlers.signal?.removeEventListener('abort', onAbort);
+    }
   }
 
   // --- Provider ---

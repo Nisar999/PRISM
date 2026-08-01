@@ -95,3 +95,12 @@ _*.bat
 _*.txt
 _*.ps1
 
+
+# Local runtime backups / editor sidecar caches (never commit)
+**/runtime.bak-*/
+**/.vscode-test-web/
+vscode-web-cache.tgz
+D:/tmp/
+D:/npm-cache/
+D:/cargo-target/
+D:/prism-release-runtime/

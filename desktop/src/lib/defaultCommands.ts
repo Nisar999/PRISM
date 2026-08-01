@@ -48,7 +48,7 @@ export function registerDefaultCommands(): void {
   commands.register({
     id: 'navigation:editor',
     name: 'View Editor',
-    description: 'Open the Code-OSS editing engine (Explorer, Tabs, Terminal, Problems, Search)',
+    description: 'Open PRISM IDE (Explorer, Tabs, Terminal, Problems, Search)',
     category: 'navigation',
     aliases: ['goto-editor', 'code'],
     action: () => {

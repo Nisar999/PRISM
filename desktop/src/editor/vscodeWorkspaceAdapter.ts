@@ -17,6 +17,28 @@ import {
 
 type Listener<T> = (value: T) => void;
 
+/**
+ * Sanitize engine errors for product UI — never expose localhost, ports,
+ * vendor names, or script paths to end users.
+ */
+export function sanitizeEditorError(raw: string | null | undefined): string {
+  const fallback = 'The editor could not start. Retry, or open a workspace folder again.';
+  if (!raw || !raw.trim()) return fallback;
+  const lower = raw.toLowerCase();
+  if (
+    /localhost|127\.0\.0\.1|:8080|code-oss|vscode|pwsh|scripts\/|workbench url|__code-oss/i.test(
+      lower,
+    )
+  ) {
+    return fallback;
+  }
+  const cleaned = raw
+    .replace(/https?:\/\/[^\s)]+/gi, '')
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '')
+    .trim();
+  return cleaned || fallback;
+}
+
 export interface AdapterSnapshot {
   lifecycle: EditorLifecycle;
   engine: EditorEngineKind | null;
@@ -38,7 +60,11 @@ export interface ResolveHostOptions {
 /**
  * Resolve iframe URL.
  * Default: PRISM Code-OSS web host → proxied or direct workbench (:8080).
- * Override with VITE_CODE_OSS_URL (raw workbench) or VITE_EDITOR_HOST=bridge.
+ * Override workbench with VITE_CODE_OSS_URL / VITE_CODE_OSS_WORKBENCH_URL.
+ * Set VITE_EDITOR_HOST=bridge for the proof-of-protocol host.
+ *
+ * Always loads through `/code-oss-host/` (or the bridge) so the protocol
+ * adapter receives READY/ERROR — never point the iframe at a raw workbench.
  */
 export function resolveEditorHostUrl(options?: ResolveHostOptions): string {
   const mode = (import.meta.env.VITE_EDITOR_HOST as string | undefined)?.trim().toLowerCase();
@@ -46,19 +72,16 @@ export function resolveEditorHostUrl(options?: ResolveHostOptions): string {
     return `${window.location.origin}/code-oss-bridge/index.html`;
   }
 
-  const direct = (import.meta.env.VITE_CODE_OSS_URL as string | undefined)?.trim();
-  if (direct) {
-    const url = new URL(direct);
-    if (options?.folderUri) url.searchParams.set('folder', options.folderUri);
-    return url.toString();
-  }
-
-  // Prefer same-origin Vite proxy in dev; production talks to Code-OSS on :8080.
+  // Prefer an explicit workbench URL; fall back to the Vite proxy (dev) or
+  // the local Code-OSS port (packaged). VITE_CODE_OSS_URL is treated as the
+  // workbench target (not the iframe src) so the protocol host stays in the
+  // middle and can still post READY/ERROR.
   const workbench = (
     (import.meta.env.VITE_CODE_OSS_WORKBENCH_URL as string | undefined)?.trim() ||
+    (import.meta.env.VITE_CODE_OSS_URL as string | undefined)?.trim() ||
     (import.meta.env.DEV
       ? `${window.location.origin}/__code-oss/`
-      : 'http://127.0.0.1:8080/')
+      : 'http://localhost:8080/')
   );
   const host = new URL(`${window.location.origin}/code-oss-host/index.html`);
   host.searchParams.set('workbench', workbench);
@@ -90,6 +113,8 @@ class VscodeWorkspaceAdapter {
   private boundOnMessage = (ev: MessageEvent) => this.onMessage(ev);
   /** Cached for useSyncExternalStore — referentially stable between emits. */
   private snapshot: AdapterSnapshot | null = null;
+  /** Fails the lifecycle if the engine never reports ready after attach. */
+  private loadWatchdog: number | null = null;
 
   /** Resolve the iframe URL (env override, Code-OSS host, or bridge). */
   resolveHostUrl(options?: ResolveHostOptions): string {
@@ -132,18 +157,42 @@ class VscodeWorkspaceAdapter {
     this.detach();
     this.frame = frame;
     if (options?.folderUri) this.pendingFolderUri = options.folderUri;
+    this.lastError = null;
     this.setLifecycle('loading');
     this.hostUrl = this.resolveHostUrl(options);
     window.addEventListener('message', this.boundOnMessage);
+    this.armLoadWatchdog();
   }
 
   detach(): void {
+    this.clearLoadWatchdog();
     window.removeEventListener('message', this.boundOnMessage);
     this.frame = null;
     if (this.lifecycle !== 'disposed') {
       this.setLifecycle('idle');
     }
     this.flushReadyWaiters(false);
+  }
+
+  /** Surface a lifecycle error if the engine never reports ready. */
+  private armLoadWatchdog(timeoutMs = 45_000): void {
+    this.clearLoadWatchdog();
+    this.loadWatchdog = window.setTimeout(() => {
+      this.loadWatchdog = null;
+      if (this.lifecycle !== 'loading') return;
+      this.lastError = sanitizeEditorError(
+        'The editing engine did not report ready in time. Retry to open the IDE.',
+      );
+      this.setLifecycle('error');
+      this.flushReadyWaiters(false);
+    }, timeoutMs);
+  }
+
+  private clearLoadWatchdog(): void {
+    if (this.loadWatchdog !== null) {
+      window.clearTimeout(this.loadWatchdog);
+      this.loadWatchdog = null;
+    }
   }
 
   /**
@@ -222,6 +271,7 @@ class VscodeWorkspaceAdapter {
               capabilities?: Record<string, string | boolean>;
             }
           | undefined;
+        this.clearLoadWatchdog();
         this.engine = p?.engine ?? 'code-oss-web';
         this.engineVersion = p?.version ?? null;
         this.capabilities = p?.capabilities ?? null;
@@ -245,7 +295,8 @@ class VscodeWorkspaceAdapter {
       }
       case EDITOR_MSG.ERROR: {
         const p = payload as { message?: string } | undefined;
-        this.lastError = p?.message ?? 'Unknown editor error';
+        this.clearLoadWatchdog();
+        this.lastError = sanitizeEditorError(p?.message ?? 'Unknown editor error');
         this.setLifecycle('error');
         this.flushReadyWaiters(false);
         break;

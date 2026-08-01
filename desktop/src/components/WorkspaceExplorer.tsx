@@ -108,8 +108,18 @@ export function WorkspaceExplorer() {
       a.download = `${activeProject.name}.prismpack`;
       a.click();
       URL.revokeObjectURL(url);
+      notificationStore.addNotification({
+        type: 'success',
+        message: 'Workspace exported',
+        description: `${activeProject.name}.prismpack downloaded.`,
+      });
     } catch (err) {
       console.error('Export failed:', err);
+      notificationStore.addNotification({
+        type: 'error',
+        message: 'Export failed',
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -118,6 +128,11 @@ export function WorkspaceExplorer() {
     if (activeProject) {
       workspaceManager.loadSession(activeProject.id, sessionId).catch(err => {
         console.error('Failed to load session:', err);
+        notificationStore.addNotification({
+          type: 'error',
+          message: 'Failed to load session',
+          description: err instanceof Error ? err.message : String(err),
+        });
       });
     }
   };

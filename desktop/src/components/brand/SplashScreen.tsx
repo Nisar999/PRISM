@@ -42,6 +42,13 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // If the gate resolves to done on mount (session already restored), the
+  // parent still needs the callback — otherwise the app would render nothing.
+  useEffect(() => {
+    if (phase === 'done') onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   const finishWelcome = () => {
     if (leavingWelcome || phase !== 'welcome') return;
     setLeavingWelcome(true);

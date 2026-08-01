@@ -13,7 +13,7 @@ import { providerStore } from '../providers';
 import { executionStore, notificationStore, workspaceStore } from '../store';
 import { graphEngine } from '../graph';
 import { shellUiStore } from '../shellUi';
-import { millyStore } from '../milly';
+import { millyEngine } from '../milly';
 import {
   generateUnifiedDiff,
   joinProjectPath,
@@ -201,7 +201,7 @@ export async function runCodeModification(
   });
   executionStore.applyLocalPipelineState('RUNNING', workflowSessionId);
 
-  millyStore.setPresence('thinking', 'high', 'Milly is planning code changes…');
+  millyEngine.signalPhase('coding', 'Planning code changes…');
   shellUiStore.setBottomTab('graph');
   shellUiStore.setRightTab('memory');
 
@@ -347,7 +347,7 @@ export async function runCodeModification(
       'codeReview',
       async () => {
         shellUiStore.setBottomTab('review');
-        millyStore.setPresence('idle', 'low', 'Review proposed edits before apply');
+        millyEngine.signalPhase('reviewing', 'Review proposed edits before apply');
       },
     );
   } catch (err) {
@@ -358,7 +358,7 @@ export async function runCodeModification(
       state_to: 'FAILED',
     });
     executionStore.applyLocalPipelineState('FAILED', workflowSessionId);
-    millyStore.setPresence('failure', 'high', 'Code modification failed');
+    millyEngine.signalPhase('error', 'Code modification failed');
     throw err;
   }
 
@@ -465,7 +465,7 @@ export async function acceptCodeModifications(opts?: {
     state_to: 'RUNNING',
   });
   executionStore.applyLocalPipelineState('RUNNING', sessionId);
-  millyStore.setPresence('thinking', 'medium', 'Applying approved edits…');
+  millyEngine.signalPhase('executing', 'Applying approved edits…');
 
   try {
     for (const file of toApply) {
@@ -504,7 +504,7 @@ export async function acceptCodeModifications(opts?: {
 
       codeReviewStore.complete('accepted', snapshots);
       shellUiStore.setBottomTab('graph');
-      millyStore.setPresence('idle', 'low', 'Edits applied');
+      millyEngine.signalSuccess('Edits applied');
       executionStore.applyLocalPipelineState('SUCCEEDED', sessionId);
       emit(sessionId, {
         event_type: 'session_completed',
@@ -517,7 +517,7 @@ export async function acceptCodeModifications(opts?: {
       if (cur) {
         codeReviewStore.setProposal({ ...cur, appliedSnapshots: snapshots });
       }
-      millyStore.setPresence('idle', 'low', `${stillPending.length} file(s) still pending`);
+      millyEngine.signalPhase('waiting', `${stillPending.length} file(s) still pending`);
       executionStore.applyLocalPipelineState('PAUSED', sessionId);
     }
 
@@ -552,7 +552,7 @@ export async function acceptCodeModifications(opts?: {
       state_to: 'FAILED',
     });
     executionStore.applyLocalPipelineState('FAILED', sessionId);
-    millyStore.setPresence('failure', 'high', 'Apply failed — rolled back');
+    millyEngine.signalPhase('error', 'Apply failed — rolled back');
     throw err;
   }
 }
@@ -576,7 +576,8 @@ export async function rejectCodeModifications(opts?: {
     state_to: 'CANCELLED',
   });
   executionStore.applyLocalPipelineState('CANCELLED', active.sessionId);
-  millyStore.setPresence('idle', 'low', 'Edits rejected');
+  millyEngine.clearOverride();
+  millyEngine.signalPhase('idle', 'Edits rejected');
   shellUiStore.setBottomTab('graph');
 
   notificationStore.addNotification({

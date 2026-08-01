@@ -124,7 +124,19 @@ fn runtime_log_dir() -> PathBuf {
         })
 }
 
-fn spawn_detached(mut cmd: Command, log_stem: &str) -> Result<(), String> {
+fn code_oss_pid_path() -> PathBuf {
+    data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("code-oss.pid")
+}
+
+fn code_oss_mount_path() -> PathBuf {
+    data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("code-oss-mount.txt")
+}
+
+fn spawn_detached(mut cmd: Command, log_stem: &str) -> Result<u32, String> {
     let log_dir = runtime_log_dir();
     let _ = fs::create_dir_all(&log_dir);
     let stdout_path = log_dir.join(format!("{log_stem}-stdout.log"));
@@ -146,7 +158,40 @@ fn spawn_detached(mut cmd: Command, log_stem: &str) -> Result<(), String> {
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(child.id())
+}
+
+fn kill_code_oss_process() {
+    if let Ok(pid_str) = fs::read_to_string(code_oss_pid_path()) {
+        if let Ok(pid) = pid_str.trim().parse::<u32>() {
+            let mut kill = Command::new("taskkill");
+            kill.args(["/F", "/T", "/PID", &pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            #[cfg(windows)]
+            {
+                kill.creation_flags(CREATE_NO_WINDOW);
+            }
+            let _ = kill.status();
+        }
+    }
+    #[cfg(windows)]
+    {
+        // Orphan listeners from older builds without a pid file.
+        let mut ps = Command::new("powershell");
+        ps.args([
+            "-NoProfile",
+            "-Command",
+            "Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW);
+        let _ = ps.status();
+    }
+    let _ = fs::remove_file(code_oss_pid_path());
+    std::thread::sleep(Duration::from_millis(400));
 }
 
 fn start_backend_from_runtime(runtime: &Path) -> String {
@@ -171,12 +216,12 @@ fn start_backend_from_runtime(runtime: &Path) -> String {
         "8000",
     ]);
     match spawn_detached(cmd, "backend") {
-        Ok(()) => "started".to_string(),
+        Ok(_) => "started".to_string(),
         Err(e) => format!("start_failed:{e}"),
     }
 }
 
-fn start_code_oss_from_runtime(runtime: &Path) -> String {
+fn start_code_oss_from_runtime(runtime: &Path, workspace_folder: Option<&Path>) -> String {
     let node = runtime.join("code-oss").join("node").join("node.exe");
     let script = runtime.join("code-oss").join("launcher").join("start.mjs");
     let cwd = runtime.join("code-oss").join("launcher");
@@ -188,9 +233,23 @@ fn start_code_oss_from_runtime(runtime: &Path) -> String {
         .arg(&script)
         .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
         .env("PRISM_CODE_OSS_PORT", "8080")
-        .env("PRISM_CODE_OSS_HOST", "127.0.0.1");
+        // localhost required for {{uuid}}.localhost web-worker extension host URLs
+        .env("PRISM_CODE_OSS_HOST", "localhost");
+    if let Some(folder) = workspace_folder {
+        if folder.is_dir() {
+            cmd.env("PRISM_WORKSPACE_FOLDER", folder);
+            let _ = fs::write(
+                code_oss_mount_path(),
+                folder.to_string_lossy().as_bytes(),
+            );
+        }
+    }
     match spawn_detached(cmd, "code-oss") {
-        Ok(()) => "started".to_string(),
+        Ok(pid) => {
+            let _ = fs::create_dir_all(data_dir().unwrap_or_else(|_| PathBuf::from(".")));
+            let _ = fs::write(code_oss_pid_path(), pid.to_string());
+            "started".to_string()
+        }
         Err(e) => format!("start_failed:{e}"),
     }
 }
@@ -224,8 +283,13 @@ fn ensure_runtime_services() -> Result<serde_json::Value, String> {
     }
 
     if code_oss == "unavailable" {
+        // Reuse last mounted folder if present so restart restores Explorer.
+        let prior = fs::read_to_string(code_oss_mount_path())
+            .ok()
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir());
         code_oss = match &runtime {
-            Some(r) => start_code_oss_from_runtime(r),
+            Some(r) => start_code_oss_from_runtime(r, prior.as_deref()),
             None => "runtime_not_found".to_string(),
         };
     }
@@ -246,13 +310,53 @@ fn ensure_runtime_services() -> Result<serde_json::Value, String> {
     // Diagnostic breadcrumb for clean-machine validation.
     if let Ok(dir) = data_dir() {
         let _ = fs::create_dir_all(&dir);
-        let _ = fs::write(
-            dir.join("runtime-ensure.json"),
-            payload.to_string(),
-        );
+        let _ = fs::write(dir.join("runtime-ensure.json"), payload.to_string());
     }
 
     Ok(payload)
+}
+
+/// Mount a local folder into the editing engine (vscode-test-web FS provider).
+/// Restarts the sidecar with PRISM_WORKSPACE_FOLDER so Explorer can list/edit files.
+/// Returns the workbench folder URI to open (`vscode-test-web://mount/`).
+#[tauri::command]
+fn mount_editor_workspace(path: String) -> Result<serde_json::Value, String> {
+    let folder = PathBuf::from(path.trim());
+    if !folder.is_dir() {
+        return Err("Workspace folder does not exist".into());
+    }
+
+    let current = fs::read_to_string(code_oss_mount_path()).unwrap_or_default();
+    let already_mounted =
+        port_open(8080) && PathBuf::from(current.trim()) == folder && !current.trim().is_empty();
+
+    if !already_mounted {
+        kill_code_oss_process();
+        let runtime = find_runtime_dir().ok_or_else(|| "runtime_not_found".to_string())?;
+        let status = start_code_oss_from_runtime(&runtime, Some(&folder));
+        if !status.starts_with("started") {
+            return Err(format!("editor_start_failed:{status}"));
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(45);
+        while std::time::Instant::now() < deadline {
+            if port_open(8080) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if !port_open(8080) {
+            return Err("editor_timeout".into());
+        }
+        // Extra settle for ESM workbench + FS provider.
+        std::thread::sleep(Duration::from_millis(800));
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "folderUri": "vscode-test-web://mount/",
+        "path": folder.to_string_lossy(),
+        "remounted": !already_mounted,
+    }))
 }
 
 #[cfg(test)]
@@ -290,7 +394,8 @@ pub fn run() {
             read_dir_contents,
             path_is_directory,
             get_data_dir,
-            ensure_runtime_services
+            ensure_runtime_services,
+            mount_editor_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

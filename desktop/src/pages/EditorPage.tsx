@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EditorHost } from '@/editor';
 import { useWorkspace } from '@/lib/store';
+import { PRODUCT } from '@/lib/brand';
 
 /**
- * Code-OSS insertion point — full-bleed editing engine.
- * Explorer / Tabs / Terminal / Problems / Search live inside Code-OSS (constitution).
- * PRISM only supplies workspace URI + adapter bridge; no duplicate editor chrome.
+ * PRISM IDE — full-bleed editing region.
+ * Explorer / Tabs / Terminal / Problems / Search live in the editing engine (constitution).
+ * PRISM supplies workspace URI + adapter bridge; no duplicate editor chrome.
  */
 export function EditorPage() {
   const workspace = useWorkspace();
@@ -18,6 +19,8 @@ export function EditorPage() {
     if (fromQuery) return fromQuery;
     const proj = workspace.activeProject;
     if (!proj) return null;
+    // Packaged sidecar mounts the active project; browser/dev keeps file://.
+    if (import.meta.env.PROD) return 'vscode-test-web://mount/';
     return `file:///${proj.path.replace(/\\/g, '/')}`;
   }, [params, workspace.activeProject]);
 
@@ -47,10 +50,10 @@ export function EditorPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-prism-editor px-6 text-center">
         <div>
-          <h1 className="font-manrope text-lg font-semibold text-white">Code-OSS editing engine</h1>
+          <h1 className="font-manrope text-lg font-semibold text-white">{PRODUCT.name} IDE</h1>
           <p className="mt-2 max-w-md font-manrope text-sm text-prism-meta">
-            Open a workspace so Explorer, Tabs, Terminal, Problems, and Search load from unmodified
-            Code-OSS — not a PRISM reimplementation.
+            Open a workspace folder to start editing. Explorer, tabs, terminal, problems, and search
+            appear in the IDE.
           </p>
         </div>
         <button
@@ -59,7 +62,7 @@ export function EditorPage() {
           className="rounded-control border border-prism-border bg-prism-fill px-4 py-2 font-manrope text-sm text-white hover:bg-prism-soft prism-focus-ring disabled:opacity-50"
           onClick={() => void openWorkspace()}
         >
-          {opening ? 'Opening…' : 'Open Workspace & Launch Editor'}
+          {opening ? 'Opening…' : 'Open Workspace'}
         </button>
       </div>
     );

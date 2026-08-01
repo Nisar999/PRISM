@@ -25,8 +25,8 @@ export function HeroPanel({
         {eyebrow}
       </p>
       <h1 className="mt-4 font-['Manrope'] text-[51.333px] font-semibold capitalize leading-[1.2] tracking-[0.5133px] text-white">
-        <span className="block">{titleLine1}</span>
-        <span className="block">
+        <span className="block whitespace-nowrap">{titleLine1}</span>
+        <span className="block whitespace-nowrap">
           INFINITE{' '}
           {titleAccent === 'SHAPES' ? (
             <ShapesAccent />

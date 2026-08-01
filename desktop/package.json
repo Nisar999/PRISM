@@ -6,13 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:code-oss": "pwsh -NoProfile -File ../scripts/code-oss-web.ps1",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "stage:runtime": "python ../scripts/stage-runtime.py",
-    "build:desktop": "npm run tauri -- build --no-bundle && npm run copy-latest-build",
-    "release:installer": "npm run stage:runtime && npm run tauri -- build && npm run copy-latest-build",
-    "copy-latest-build": "node scripts/copy-latest-build.mjs"
+    "stage:runtime": "node ../scripts/run-with-d-drive.mjs python ../scripts/stage-runtime.py",
+    "build:desktop": "node ../scripts/run-with-d-drive.mjs npm run tauri -- build --no-bundle && npm run copy-latest-build",
+    "release:installer": "npm run stage:runtime && node ../scripts/run-with-d-drive.mjs npm run tauri -- build && npm run copy-latest-build",
+    "copy-latest-build": "node ../scripts/run-with-d-drive.mjs node scripts/copy-latest-build.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

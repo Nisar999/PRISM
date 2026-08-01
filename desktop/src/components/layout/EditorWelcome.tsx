@@ -95,7 +95,7 @@ export function EditorWelcome() {
               <button
                 type="button"
                 onClick={action.run}
-                className="flex w-full items-center justify-between gap-3 py-[7px] text-left transition-opacity hover:opacity-100 opacity-80"
+                className="prism-focus-ring-sm flex w-full items-center justify-between gap-3 rounded py-[7px] text-left opacity-80 transition-opacity hover:opacity-100"
               >
                 <span className="font-manrope text-[17px] font-semibold capitalize leading-none text-prism-muted">
                   {action.label}

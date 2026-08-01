@@ -1,0 +1,8 @@
+# PRISM Desktop — force Cargo build artifacts onto D:
+# (C: is space-constrained; D: is the primary development drive.)
+#
+# Equivalent env: CARGO_TARGET_DIR=D:\cargo-target\prism-desktop
+# Override anytime with CARGO_TARGET_DIR in the environment.
+
+[build]
+target-dir = "D:/cargo-target/prism-desktop"

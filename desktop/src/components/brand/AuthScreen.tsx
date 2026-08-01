@@ -90,10 +90,12 @@ export function AuthScreen({ onDone, leaving = false, className }: AuthScreenPro
   };
 
   const onSocial = (provider: 'google' | 'github') => {
+    const label = provider === 'google' ? 'Google' : 'GitHub';
     notificationStore.addNotification({
       type: 'info',
-      message: `${provider} sign-in`,
-      description: 'Cloud OAuth is not part of v1 — use a local PRISM identity or the developer shortcut.',
+      message: `${label} sign-in arrives with cloud sync`,
+      description:
+        'PRISM v1 is local-first: create a local identity instead — your profile and passphrase never leave this device.',
     });
   };
 
