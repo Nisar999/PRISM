@@ -66,12 +66,23 @@ class LiteLLMProvider(LLMProvider):
             kwargs["max_tokens"] = request.max_tokens
         if request.tools:
             kwargs["tools"] = request.tools
+        if request.api_key:
+            kwargs["api_key"] = request.api_key
 
         # Provider-specific API base configuration
         if model.startswith("ollama/"):
             kwargs["api_base"] = self._settings.ollama_base_url
         elif model.startswith("lm_studio/") or model.startswith("openai/lm-studio"):
             kwargs["api_base"] = self._settings.lmstudio_base_url
+        elif model.startswith("openrouter/"):
+            # Odysseus-style first-class OpenRouter identity headers
+            kwargs.setdefault("extra_headers", {})
+            kwargs["extra_headers"].update(
+                {
+                    "HTTP-Referer": "https://github.com/Nisar999/PRISM",
+                    "X-Title": "PRISM",
+                }
+            )
 
         return kwargs
 
@@ -110,7 +121,8 @@ class LiteLLMProvider(LLMProvider):
 
     async def _fallback_chat(self, request: ChatRequest, original_error: Exception) -> ChatResponse:
         """Fallback chain: OpenRouter → local model → graceful error."""
-        if not self._settings.openrouter_api_key:
+        has_openrouter = bool(self._settings.openrouter_api_key or request.api_key)
+        if not has_openrouter:
             raise ProviderError(
                 f"Provider failed: {original_error}",
                 provider=self._extract_provider(self._resolve_model(request.model)),

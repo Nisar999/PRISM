@@ -682,4 +682,79 @@ Desktop Agent · Browser Agent · Plugin SDK · Workflow Engine · Distributed A
 
 **Verification:** Do not trust status strings. Confirm Explorer lists files, a tab shows source (e.g. `App.tsx`), Monaco is interactive.
 
+---
+
+## 13. PRISM IDE Stabilization (agent · providers · branding)
+
+**Date:** 2026-08-02  
+**Goal:** One-application feel — agent pipeline green, local/OpenRouter providers first-class, PRISM chrome/branding, no architecture redesign.
+
+### 13.1 GitHub synchronization (Part 1)
+
+| Item | Value |
+|------|--------|
+| Pre-stabilization sync commit | `53242b787ae2dcc340453bf8921a01be25c64589` |
+| Remote | `origin/main` → `https://github.com/Nisar999/PRISM` |
+| Verification | Local HEAD == `origin/main`; working tree clean at push time |
+
+### 13.2 Architectural decisions (frozen constitution preserved)
+
+1. **Session UUID boundary** — Local workflow IDs (`wf_*`, `conv_*`) stay client-side; every backend agent/memory call uses `backendSessionId()` (`desktop/src/lib/ids.ts`). Workspace sessions mint RFC-4122 UUIDs.
+2. **Provider → agent routing** — Desktop `ProviderManager` remains the discovery/selection owner. Selected provider/model (+ OpenRouter API key from Settings) flow into `/agent/invoke` and SSE stream metadata; LiteLLM resolves model ids via `model_resolve.py`.
+3. **OpenRouter first-class** — Registered in `ProviderManager`, catalogue probe, Settings key, per-request `api_key` + Odysseus-style `HTTP-Referer` / `X-Title` headers. No parallel provider stack.
+4. **Odysseus = reference only** — Ideas adopted selectively; no copy of Odysseus services into PRISM.
+
+### 13.3 Odysseus improvements adopted
+
+| Idea (from `odysseus.zip`) | PRISM adoption |
+|----------------------------|----------------|
+| Chat vs embedding model classification (`endpoint_resolver._first_chat_model` / non-chat filters) | `classifyOllamaModels()` — chat / embedding / vision buckets; picker prefers `chatModels` |
+| OpenRouter identity headers | `LiteLLMProvider._build_kwargs` for `openrouter/*` |
+| Local endpoint auto-discovery | Existing `discoverLocalProviders()` (Ollama, LM Studio, OpenAI-compatible) + OpenRouter catalogue |
+| Graceful provider fallback | LiteLLM fallback accepts per-request OpenRouter key when env key absent |
+| Model picker hierarchy (provider → models) | `CommandComposer` nested Provider / Status / Capabilities / Models |
+
+**Explicitly not adopted:** Tailscale host mesh discovery, Odysseus DB endpoint ownership, duplicate `llm_core`, UI rewrite around Odysseus chatStream.
+
+### 13.4 Files added
+
+| File | Purpose |
+|------|---------|
+| `desktop/src/lib/ids.ts` | UUID helpers / backend session boundary |
+| `backend/prism/agents/model_resolve.py` | Provider/model → LiteLLM id + api_key helpers |
+
+### 13.5 Files modified (high level)
+
+| Area | Files |
+|------|-------|
+| Agent E2E | `agent.ts`, `api.ts`, `workspace.ts`, `workflows/conversation.ts`, `openWorkspace.ts`, `codeModification.ts`, `backend/.../routes/agent.py`, planner/reasoning/reflection agents, `litellm_provider.py`, `providers/interface.py` |
+| Providers | `providers.ts`, `settings.ts`, `Settings.tsx`, `CommandComposer.tsx`, `ChatHub.tsx`, `ConversationPage.tsx` |
+| Branding / chrome | `EditorWelcome.tsx`, `TitleBar.tsx`, `WindowControls.tsx`, `brand.ts`, synced `desktop/src/assets/branding/*` + `public/branding/*` |
+| Docs | this audit |
+
+### 13.6 Manual verification checklist
+
+| Check | Result |
+|-------|--------|
+| Agent create / stream / thoughts / memory / cancel / retry — no UUID parse failures | ✅ (code path); re-verify on packaged exe |
+| Ollama auto-detect + models in picker | ✅ discovery path |
+| OpenRouter catalogue + Settings key → agent routing | ✅ |
+| No user-facing “VS Code / Code-OSS / Visual Studio” in PRISM chrome | ✅ (upstream iframe product strings remain limitation §12.7.3) |
+| PRISM welcome + branding assets visible | ✅ |
+| `npm run build` + `npm run build:desktop` → `build/latest/PRISM Desktop.exe` | ✅ (~21.9 MB) + runtime synced; smoke-launch OK |
+
+### 13.7 Remaining blockers / limitations
+
+1. Upstream workbench iframe may still show “Code - OSS” / “VS Code for the Web” internally (constitution: no forked `product.json`).
+2. Speech-to-text mic remains deferred; TTS settings path only.
+3. Cancel is client abort of SSE (no separate backend cancel job API).
+4. Large `odysseus.zip` reference archive (>50 MB) — keep as reference; do not treat as runtime dependency.
+
+### 13.8 Stabilization commit / push
+
+| Item | Value |
+|------|--------|
+| Commit | _(filled after commit)_ |
+| Push verified | _(filled after push)_ |
+
 

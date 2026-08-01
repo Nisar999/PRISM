@@ -8,7 +8,7 @@ const IS_TAURI =
 
 /**
  * Native window controls (minimize / maximize–restore / close) for the
- * undecorated Tauri window. VS Code-style hit targets and glyphs.
+ * undecorated Tauri window. Compact PRISM chrome hit targets and glyphs.
  * Renders nothing outside the Tauri WebView (plain browser dev).
  */
 export function WindowControls() {

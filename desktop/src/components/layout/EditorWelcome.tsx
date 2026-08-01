@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import prismMark from '@/assets/figma/shell/prism-mark.png';
+import { brandAssets, PRODUCT } from '@/lib/brand';
 import { commands } from '@/lib/commands';
 import { shellUiStore } from '@/lib/shellUi';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,7 @@ function Keycap({ children }: { children: string }) {
 }
 
 /**
- * Figma 434:2 center welcome — replaces generated LandingHome dashboard.
+ * PRISM center welcome — brand-first empty editor surface.
  */
 export function EditorWelcome() {
   const navigate = useNavigate();
@@ -81,14 +81,34 @@ export function EditorWelcome() {
       className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-prism-editor"
       data-name="EditorWelcome"
     >
+      <div
+        className="pointer-events-none absolute inset-0 opacity-40"
+        style={{
+          background:
+            'radial-gradient(ellipse 70% 45% at 50% 28%, rgba(0,191,255,0.12), transparent 70%)',
+        }}
+        aria-hidden
+      />
       <img
-        src={prismMark}
+        src={brandAssets.logo}
+        alt={PRODUCT.name}
+        className="relative mb-3 size-[96px] object-contain opacity-90"
+        draggable={false}
+      />
+      <p className="relative mb-1 font-afacad text-[28px] font-black uppercase tracking-wide text-white">
+        {PRODUCT.name}
+      </p>
+      <p className="relative mb-8 max-w-sm text-center font-manrope text-[13px] text-prism-muted">
+        {PRODUCT.tagline}
+      </p>
+      <img
+        src={brandAssets.milly}
         alt=""
-        className="mb-10 size-[119px] object-contain opacity-30"
+        className="relative mb-8 size-[72px] object-contain opacity-70"
         draggable={false}
       />
 
-      <div className="w-[303px] rounded-[9px] bg-[#1e1e1e]/50 px-3 py-3 opacity-90">
+      <div className="relative w-[303px] rounded-[9px] bg-[#1e1e1e]/50 px-3 py-3 opacity-90">
         <ul className="space-y-0">
           {actions.map((action) => (
             <li key={action.label}>

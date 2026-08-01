@@ -207,7 +207,7 @@ export function TitleBar() {
 
   return (
     <header
-      className="relative flex h-10 w-full shrink-0 select-none items-center overflow-visible border-b border-white/[0.06] bg-prism-panel pl-3 text-[17px] font-semibold capitalize text-prism-muted"
+      className="relative flex h-10 w-full shrink-0 select-none items-center overflow-visible bg-prism-panel pl-3 text-[17px] font-semibold capitalize text-prism-muted"
       data-tauri-drag-region
       data-name="TitleBar"
     >
@@ -278,7 +278,7 @@ export function TitleBar() {
 
       <MillyWorkspaceMenu />
 
-      {/* Window title — centered in the remaining drag area, like VS Code. */}
+      {/* Window title — centered in the continuous drag region. */}
       <div className="pointer-events-none hidden min-w-0 flex-1 px-4 md:block" aria-hidden="true">
         <p className="truncate text-center font-manrope text-[12px] font-medium normal-case tracking-[0.01em] text-prism-dim">
           {windowTitle}

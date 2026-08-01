@@ -103,6 +103,12 @@ export interface MemorySearchResult {
 export interface AgentInvokeRequest {
   message: string;
   session_id?: string | null;
+  /** Preferred provider id from ProviderManager (ollama, openrouter, …). */
+  provider?: string | null;
+  /** Preferred model id discovered for that provider. */
+  model?: string | null;
+  /** Optional API key for cloud providers (OpenRouter from Settings). */
+  api_key?: string | null;
 }
 
 export interface AgentInvokeResponse {

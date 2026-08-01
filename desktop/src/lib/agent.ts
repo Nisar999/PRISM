@@ -5,6 +5,9 @@
 
 import { useSyncExternalStore } from 'react';
 import { api, AgentInvokeRequest, AgentInvokeResponse } from './api';
+import { backendSessionId } from './ids';
+import { providerStore } from './providers';
+import { settingsStore } from './settings';
 import { Store, executionStore, notificationStore } from './store';
 
 export interface AgentState {
@@ -13,6 +16,34 @@ export interface AgentState {
   lastResponse: AgentInvokeResponse | null;
   error: string | null;
   sessionId: string | null;
+}
+
+function resolveProviderRouting(request: AgentInvokeRequest): {
+  provider: string | null;
+  model: string | null;
+  api_key: string | null;
+} {
+  const providerSnap = providerStore.getSnapshot();
+  const settings = settingsStore.getSnapshot();
+  const active = providerSnap.activeProviderId
+    ? providerSnap.providers[providerSnap.activeProviderId]
+    : null;
+  const provider = request.provider ?? active?.id ?? null;
+  const catalogue =
+    (active?.chatModels?.length ? active.chatModels : active?.models)?.filter(
+      (m) => m && !m.startsWith('('),
+    ) ?? [];
+  const preferred = settings.providers.preferredModel?.trim() || '';
+  const model =
+    request.model?.trim() ||
+    preferred ||
+    catalogue[0] ||
+    null;
+  let api_key = request.api_key?.trim() || null;
+  if (!api_key && provider === 'openrouter') {
+    api_key = settings.providers.openrouterApiKey?.trim() || null;
+  }
+  return { provider, model, api_key };
 }
 
 class AgentStore extends Store<AgentState> {
@@ -83,7 +114,8 @@ class AgentManager {
     request: AgentInvokeRequest,
     opts?: { resetExecution?: boolean },
   ): Promise<AgentInvokeResponse> {
-    const sessionId = request.session_id ?? crypto.randomUUID();
+    const sessionId = backendSessionId(request.session_id);
+    const routing = resolveProviderRouting(request);
     agentStore.setInvoking(request.message, sessionId);
     if (opts?.resetExecution !== false) {
       executionStore.resetSession(sessionId);
@@ -99,7 +131,10 @@ class AgentManager {
     try {
       const response = await api.invokeAgent({
         message: request.message,
-        session_id: request.session_id ?? sessionId,
+        session_id: sessionId,
+        provider: routing.provider,
+        model: routing.model,
+        api_key: routing.api_key,
       });
 
       agentStore.setSucceeded(response, sessionId);
@@ -150,7 +185,8 @@ class AgentManager {
       }
     }
 
-    const sessionId = request.session_id ?? crypto.randomUUID();
+    const sessionId = backendSessionId(request.session_id);
+    const routing = resolveProviderRouting(request);
     agentStore.setInvoking(request.message, sessionId);
     if (opts?.resetExecution !== false) {
       executionStore.resetSession(sessionId);
@@ -163,7 +199,10 @@ class AgentManager {
       const final = await api.streamAgent(
         {
           message: request.message,
-          session_id: request.session_id ?? sessionId,
+          session_id: sessionId,
+          provider: routing.provider,
+          model: routing.model,
+          api_key: routing.api_key,
         },
         {
           signal: controller.signal,

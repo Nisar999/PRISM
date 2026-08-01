@@ -17,6 +17,7 @@ import { millyEngine } from '../milly';
 import { settingsStore } from '../settings';
 import { voiceManager } from '../voice';
 import { runCodeModification } from './codeModification';
+import { backendSessionId } from '../ids';
 
 export type ConversationIntent =
   | 'question'
@@ -131,7 +132,16 @@ export async function loadConversationHistory(): Promise<ConversationTurn[]> {
     const art = await workspaceManager.loadArtifact(project.id, artifactIdForSession(sessionId));
     const parsed = JSON.parse(art.content) as { turns?: ConversationTurn[] };
     return Array.isArray(parsed.turns) ? parsed.turns : [];
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Missing artifact is normal for a new session — only warn on unexpected failures.
+    if (!/404|not found|does not exist/i.test(msg)) {
+      notificationStore.addNotification({
+        type: 'warning',
+        message: 'Conversation restore incomplete',
+        description: msg.slice(0, 240),
+      });
+    }
     return [];
   }
 }
@@ -270,7 +280,9 @@ async function runConversationTurnWith(
     sessionId = session.id;
   }
 
+  // Local execution/graph id may be non-UUID; backend agent/memory require UUIDs.
   const workflowSessionId = sessionId ?? `conv_${crypto.randomUUID().slice(0, 8)}`;
+  const agentSessionId = backendSessionId(sessionId);
 
   executionStore.resetSession(workflowSessionId);
   emit(workflowSessionId, {
@@ -376,7 +388,7 @@ async function runConversationTurnWith(
           agentBox.response = await agentManager.invokeStream(
             {
               message: assembled,
-              session_id: workflowSessionId,
+              session_id: agentSessionId,
             },
             {
               resetExecution: false,
@@ -391,7 +403,7 @@ async function runConversationTurnWith(
           agentBox.response = await agentManager.invoke(
             {
               message: assembled,
-              session_id: workflowSessionId,
+              session_id: agentSessionId,
             },
             { resetExecution: false },
           );
@@ -413,7 +425,7 @@ async function runConversationTurnWith(
         try {
           await memoryManager.create({
             content: `Q: ${message}\nA: ${answer.slice(0, 2000)}`,
-            session_id: workflowSessionId,
+            session_id: agentSessionId,
             memory_type: 'episodic',
             metadata: {
               workflow: 'conversation',

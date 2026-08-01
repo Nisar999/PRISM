@@ -25,6 +25,7 @@ import {
   type CodeReviewProposal,
 } from '../codeReviewStore';
 import type { ConversationTurn } from './conversation';
+import { backendSessionId } from '../ids';
 
 export interface CodeModificationResult {
   sessionId: string;
@@ -254,7 +255,7 @@ export async function runCodeModification(
       async () => {
         try {
           agentBox.response = await agentManager.invoke(
-            { message: assembled, session_id: workflowSessionId },
+            { message: assembled, session_id: backendSessionId(workflowSessionId) },
             { resetExecution: false },
           );
         } catch {

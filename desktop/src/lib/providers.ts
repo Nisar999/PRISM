@@ -13,8 +13,14 @@ export interface ProviderDefinition {
   status: 'active' | 'inactive' | 'error' | 'checking';
   capabilities: string[];
   models: string[];
+  /** Heuristic buckets for local discovery UIs. */
+  chatModels?: string[];
+  embeddingModels?: string[];
+  visionModels?: string[];
   latency?: number;
   error?: string;
+  /** Probe base URL when known (local providers). */
+  endpoint?: string;
 }
 
 // --- Provider Store (UI-Agnostic) ---
@@ -198,6 +204,67 @@ async function fetchOllamaModels(base: string): Promise<string[]> {
   }
 }
 
+function classifyOllamaModels(models: string[]): {
+  chatModels: string[];
+  embeddingModels: string[];
+  visionModels: string[];
+} {
+  const embeddingModels: string[] = [];
+  const visionModels: string[] = [];
+  const chatModels: string[] = [];
+  for (const name of models) {
+    const lower = name.toLowerCase();
+    if (/embed|nomic-embed|mxbai-embed|bge-|e5-/.test(lower)) {
+      embeddingModels.push(name);
+    } else if (/llava|vision|bakllava|minicpm-v|qwen2\.5-vl|llama3\.2-vision/.test(lower)) {
+      visionModels.push(name);
+      chatModels.push(name);
+    } else {
+      chatModels.push(name);
+    }
+  }
+  return { chatModels, embeddingModels, visionModels };
+}
+
+async function probeOpenRouterCatalogue(
+  apiKey: string,
+): Promise<{ healthy: boolean; latency_ms?: number; models: string[] }> {
+  const start = performance.now();
+  try {
+    const res = await fetchWithTimeout('https://openrouter.ai/api/v1/models', PROVIDER_HEALTH_TIMEOUT_MS);
+    // Catalogue is public; key validates separately via settings.
+    if (!res.ok) return { healthy: Boolean(apiKey), models: [] };
+    const body = (await res.json()) as { data?: Array<{ id?: string }> };
+    const models = (body.data ?? [])
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      .slice(0, 80);
+    return {
+      healthy: Boolean(apiKey),
+      latency_ms: Math.round(performance.now() - start),
+      models,
+    };
+  } catch {
+    return { healthy: Boolean(apiKey), models: [] };
+  }
+}
+
+function readOpenRouterKeyFromStorage(): string | undefined {
+  try {
+    if (typeof window === 'undefined') return undefined;
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { providers?: { openrouterApiKey?: string; apiKey?: string } };
+    return (
+      parsed.providers?.openrouterApiKey?.trim() ||
+      parsed.providers?.apiKey?.trim() ||
+      undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /** Probe an OpenAI-compatible `/v1/models` endpoint. Returns healthy + base + models. */
 async function probeOpenAICompatible(
   base: string,
@@ -315,6 +382,15 @@ class ProviderManager {
       capabilities: ['chat', 'embeddings', 'tool_use', 'vision', 'reasoning'],
       models: [],
     });
+
+    this.registerProvider({
+      id: 'openrouter',
+      name: 'OpenRouter',
+      type: 'cloud',
+      status: 'inactive',
+      capabilities: ['chat', 'reasoning', 'vision', 'tool_use'],
+      models: [],
+    });
   }
 
   public registerProvider(provider: ProviderDefinition): void {
@@ -338,18 +414,30 @@ class ProviderManager {
     const ollama = await probeOllamaEndpoint();
     if (ollama.healthy && ollama.base) {
       const models = await fetchOllamaModels(ollama.base);
+      const classified = classifyOllamaModels(models);
+      const caps = ['chat', 'tool_use', 'reasoning'];
+      if (classified.embeddingModels.length) caps.push('embeddings');
+      if (classified.visionModels.length) caps.push('vision');
       providerStore.updateProvider('ollama', {
         status: 'active',
         latency: ollama.latency_ms ?? 120,
         error: undefined,
+        endpoint: ollama.base,
         models: models.length > 0 ? models : ['(no models installed)'],
+        chatModels: classified.chatModels,
+        embeddingModels: classified.embeddingModels,
+        visionModels: classified.visionModels,
+        capabilities: caps,
       });
       providerDebug('discoverLocalProviders.ollama.ok', { base: ollama.base, modelCount: models.length });
     } else {
       providerStore.updateProvider('ollama', {
         status: 'inactive',
-        error: 'Ollama not detected on 127.0.0.1:11434/11435.',
+        error: 'Ollama not detected — start Ollama to auto-discover models.',
         models: [],
+        chatModels: [],
+        embeddingModels: [],
+        visionModels: [],
       });
     }
 
@@ -360,8 +448,10 @@ class ProviderManager {
         status: 'active',
         latency: lmstudio.latency_ms ?? 120,
         error: undefined,
+        endpoint: lmstudio.base,
         models:
           lmstudio.models.length > 0 ? lmstudio.models : ['(no models loaded in LM Studio)'],
+        chatModels: lmstudio.models,
       });
       providerDebug('discoverLocalProviders.lmstudio.ok', {
         base: lmstudio.base,
@@ -370,10 +460,26 @@ class ProviderManager {
     } else {
       providerStore.updateProvider('lmstudio', {
         status: 'inactive',
-        error: 'LM Studio not detected on 127.0.0.1:1234.',
+        error: 'LM Studio not detected on the default local port.',
         models: [],
       });
     }
+
+    // OpenRouter (first-class cloud catalogue; requires API key for activation)
+    const orKey =
+      (import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined)?.trim() ||
+      readOpenRouterKeyFromStorage() ||
+      '';
+    const or = await probeOpenRouterCatalogue(orKey);
+    providerStore.updateProvider('openrouter', {
+      status: orKey && or.healthy ? 'active' : or.models.length ? 'inactive' : 'inactive',
+      latency: or.latency_ms,
+      error: orKey ? undefined : 'Add an OpenRouter API key in Settings to activate.',
+      models: or.models.length
+        ? or.models
+        : ['openrouter/meta-llama/llama-3.2-3b-instruct:free'],
+      chatModels: or.models,
+    });
 
     // Generic OpenAI-compatible endpoints (registered dynamically)
     for (const base of openAiCompatibleBases()) {
@@ -387,7 +493,9 @@ class ProviderManager {
           status: 'active',
           capabilities: ['chat'],
           models: result.models.length > 0 ? result.models : ['(no models)'],
+          chatModels: result.models,
           latency: result.latency_ms,
+          endpoint: base,
         });
       }
     }
@@ -484,15 +592,42 @@ class ProviderManager {
       const direct = await probeOllamaEndpoint();
       if (direct.healthy && direct.base) {
         const models = await fetchOllamaModels(direct.base);
+        const classified = classifyOllamaModels(models);
+        const caps = ['chat', 'tool_use', 'reasoning'];
+        if (classified.embeddingModels.length) caps.push('embeddings');
+        if (classified.visionModels.length) caps.push('vision');
         providerStore.updateProvider(providerId, {
           status: 'active',
           latency: direct.latency_ms ?? 120,
           error: undefined,
+          endpoint: direct.base,
           models: models.length > 0 ? models : ['(no models installed)'],
+          chatModels: classified.chatModels,
+          embeddingModels: classified.embeddingModels,
+          visionModels: classified.visionModels,
+          capabilities: caps,
         });
         providerDebug('checkProviderHealth.ok', { providerId, via: 'ollama-direct', base: direct.base });
         return;
       }
+    }
+
+    if (providerId === 'openrouter') {
+      const key =
+        (import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined)?.trim() ||
+        readOpenRouterKeyFromStorage() ||
+        '';
+      const or = await probeOpenRouterCatalogue(key);
+      providerStore.updateProvider(providerId, {
+        status: key ? 'active' : 'inactive',
+        latency: or.latency_ms,
+        error: key ? undefined : 'Add an OpenRouter API key in Settings to activate.',
+        models: or.models.length
+          ? or.models
+          : ['openrouter/meta-llama/llama-3.2-3b-instruct:free'],
+        chatModels: or.models,
+      });
+      if (key) return;
     }
 
     if (providerId === 'lmstudio') {

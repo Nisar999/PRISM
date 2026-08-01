@@ -19,6 +19,7 @@ import {
   mountEditorWorkspace,
 } from '../ensureEditorRuntime';
 import { isNativeDesktop } from '../nativeFolder';
+import { backendSessionId } from '../ids';
 
 export interface OpenWorkspaceOptions {
   path: string;
@@ -226,7 +227,7 @@ export async function runOpenWorkspaceWorkflow(
         const response = await agentManager.invoke(
           {
             message: prompt,
-            session_id: sessionId,
+            session_id: backendSessionId(sessionId),
           },
           { resetExecution: false },
         );

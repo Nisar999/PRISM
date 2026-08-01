@@ -22,6 +22,8 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = None
     tools: list[dict[str, Any]] | None = None
+    # Optional per-request API key (e.g. OpenRouter from desktop settings).
+    api_key: str | None = None
 
 
 class ChatResponse(BaseModel):

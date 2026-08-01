@@ -19,6 +19,7 @@ import {
   readdirSync,
   statSync,
   rmSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -71,6 +72,20 @@ function syncRuntimeBesideExe() {
       '[copy-latest-build] No staged runtime found — editor sidecar will be unavailable until stage:runtime',
     );
     return false;
+  }
+  // If a previous runtime is locked (live sidecar), move it aside then copy.
+  if (existsSync(destRuntime)) {
+    try {
+      rmSync(destRuntime, { recursive: true, force: true });
+    } catch {
+      const bak = `${destRuntime}.bak.${Date.now()}`;
+      try {
+        renameSync(destRuntime, bak);
+        console.warn(`[copy-latest-build] runtime locked — moved aside to ${bak}`);
+      } catch (err) {
+        console.warn('[copy-latest-build] could not clear previous runtime:', err.message);
+      }
+    }
   }
   mkdirSync(destRuntime, { recursive: true });
   cpSync(src, destRuntime, { recursive: true, force: true });

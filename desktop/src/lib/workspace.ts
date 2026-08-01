@@ -223,7 +223,8 @@ class WorkspaceManager {
       throw new Error('No active project matching session initialization.');
     }
 
-    const sessionId = `session_${Math.random().toString(36).substring(2, 9)}`;
+    // Backend agent/memory APIs require RFC-4122 UUIDs — never use session_* prefixes.
+    const sessionId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const session: SessionData = {

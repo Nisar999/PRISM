@@ -1,6 +1,7 @@
 """Planner agent — breaks tasks and chooses memory strategy."""
 
 from prism.agents.state import AgentState
+from prism.agents.model_resolve import resolve_request_api_key, resolve_request_model
 from prism.core.logging import get_logger
 from prism.providers.interface import ChatMessage, ChatRequest
 from prism.providers.litellm_provider import LiteLLMProvider
@@ -31,6 +32,8 @@ class PlannerAgent:
                 ],
                 temperature=0.3,
                 max_tokens=500,
+                model=resolve_request_model(state),
+                api_key=resolve_request_api_key(state),
             )
             response = await self._llm.chat(request)
             logger.info("planner_complete", session_id=str(state.get("session_id")))

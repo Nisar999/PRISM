@@ -8,6 +8,11 @@ export interface ComposerProviderOption {
   id: string;
   name: string;
   status?: string;
+  type?: 'local' | 'cloud';
+  capabilities?: string[];
+  models?: string[];
+  latency?: number;
+  error?: string;
 }
 
 export interface CommandComposerProps {
@@ -18,7 +23,9 @@ export interface CommandComposerProps {
   onModelClick?: () => void;
   providers?: ComposerProviderOption[];
   activeProviderId?: string | null;
+  activeModelId?: string | null;
   onSelectProvider?: (providerId: string) => void;
+  onSelectModel?: (providerId: string, modelId: string) => void;
   placeholder?: string;
   busy?: boolean;
   onCancel?: () => void;
@@ -35,7 +42,9 @@ export function CommandComposer({
   onModelClick,
   providers = [],
   activeProviderId,
+  activeModelId,
   onSelectProvider,
+  onSelectModel,
   placeholder = 'Ask anything, @ to mention, / for actions',
   busy,
   onCancel,
@@ -43,6 +52,7 @@ export function CommandComposer({
   onMicClick,
 }: CommandComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +63,10 @@ export function CommandComposer({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (menuOpen && activeProviderId) setExpandedId(activeProviderId);
+  }, [menuOpen, activeProviderId]);
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -119,32 +133,90 @@ export function CommandComposer({
           {menuOpen && providers.length > 0 ? (
             <div
               role="listbox"
-              aria-label="Providers"
-              className="absolute bottom-full left-0 z-30 mb-2 min-w-[220px] rounded-md border border-white/10 bg-prism-panel py-1 shadow-prism-elevated"
+              aria-label="Providers and models"
+              className="absolute bottom-full left-0 z-30 mb-2 max-h-[360px] w-[min(380px,90vw)] overflow-y-auto rounded-md border border-white/10 bg-prism-panel py-1 shadow-prism-elevated"
             >
-              {providers.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="option"
-                  aria-selected={p.id === activeProviderId}
-                  className={cn(
-                    'flex w-full items-center justify-between px-3 py-2 text-left font-manrope text-[13px]',
-                    p.id === activeProviderId
-                      ? 'bg-white/10 text-white'
-                      : 'text-prism-muted hover:bg-white/5 hover:text-white',
-                  )}
-                  onClick={() => {
-                    onSelectProvider?.(p.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <span>{p.name}</span>
-                  {p.status ? (
-                    <span className="text-[11px] uppercase text-prism-dim">{p.status}</span>
-                  ) : null}
-                </button>
-              ))}
+              {providers.map((p) => {
+                const active = p.id === activeProviderId;
+                const expanded = expandedId === p.id;
+                const models = (p.models ?? []).filter((m) => m && !m.startsWith('('));
+                return (
+                  <div key={p.id} className="border-b border-white/[0.04] last:border-b-0">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={cn(
+                        'flex w-full flex-col gap-1 px-3 py-2.5 text-left font-manrope',
+                        active ? 'bg-white/10 text-white' : 'text-prism-muted hover:bg-white/5 hover:text-white',
+                      )}
+                      onClick={() => {
+                        onSelectProvider?.(p.id);
+                        if (models.length > 0) {
+                          setExpandedId(p.id);
+                          if (!onSelectModel) setMenuOpen(false);
+                        } else {
+                          setMenuOpen(false);
+                        }
+                      }}
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="text-[13px] font-medium text-white">{p.name}</span>
+                        <span
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide',
+                            p.status === 'active'
+                              ? 'bg-emerald-500/20 text-emerald-200'
+                              : 'bg-white/5 text-prism-dim',
+                          )}
+                        >
+                          {p.status ?? 'offline'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-prism-dim">
+                        <span>{p.type === 'cloud' ? 'Cloud' : 'Local'}</span>
+                        {(p.capabilities ?? []).slice(0, 4).map((c) => (
+                          <span key={c} className="rounded bg-white/5 px-1.5 py-0.5 text-prism-muted">
+                            {c}
+                          </span>
+                        ))}
+                        {typeof p.latency === 'number' ? <span>{p.latency} ms</span> : null}
+                      </div>
+                      {p.error ? (
+                        <div className="truncate text-[11px] text-amber-200/80">{p.error}</div>
+                      ) : null}
+                    </button>
+                    {expanded && models.length > 0 && onSelectModel ? (
+                      <div className="space-y-0.5 bg-black/20 px-2 pb-2">
+                        <p className="px-1 py-1 text-[10px] uppercase tracking-wide text-prism-dim">
+                          Models
+                        </p>
+                        {models.slice(0, 12).map((m) => {
+                          const selected = active && (activeModelId === m || (!activeModelId && m === models[0]));
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              className={cn(
+                                'flex w-full truncate rounded px-2 py-1.5 text-left font-manrope text-[12px]',
+                                selected
+                                  ? 'bg-prism-focus/20 text-white'
+                                  : 'text-prism-muted hover:bg-white/5 hover:text-white',
+                              )}
+                              onClick={() => {
+                                onSelectModel(p.id, m);
+                                setMenuOpen(false);
+                              }}
+                            >
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
               {onModelClick ? (
                 <>
                   <div className="my-1 h-px bg-white/10" />
@@ -156,7 +228,7 @@ export function CommandComposer({
                       onModelClick();
                     }}
                   >
-                    Provider settings…
+                    Open provider settings…
                   </button>
                 </>
               ) : null}

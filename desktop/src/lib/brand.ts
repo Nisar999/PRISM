@@ -15,7 +15,7 @@ export const PRODUCT = {
   version: '1.0.0-rc.1',
   versionLabel: 'v1.0.0-rc.1',
   constitutionVersion: '1.0 (Locked)',
-  architecture: 'PRISM Desktop → intelligence surfaces → Code-OSS editing engine',
+  architecture: 'PRISM Desktop → intelligence surfaces → editing engine',
   copyright: `© ${new Date().getFullYear()} PRISM`,
   roadmap: [
     'v1 — Agentic Intelligent Workspace (Milly, no voice)',

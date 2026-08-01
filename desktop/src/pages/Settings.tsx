@@ -582,6 +582,20 @@ export function SettingsPage() {
                     />
                   </Row>
                 )}
+                {match('openrouter', 'api', 'key') && (
+                  <Row
+                    title="OpenRouter API key"
+                    description="Token for OpenRouter catalogue and streaming."
+                  >
+                    <input
+                      type="password"
+                      placeholder="sk-or-…"
+                      className={cn(inputClass, 'w-64')}
+                      value={settings.providers.openrouterApiKey}
+                      onChange={(e) => void patch('providers', 'openrouterApiKey', e.target.value)}
+                    />
+                  </Row>
+                )}
                 {!q ? (
                   <ul className="mt-3 space-y-2">
                     {Object.values(providers.providers).map((p) => (

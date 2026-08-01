@@ -98,6 +98,7 @@ _*.ps1
 
 # Local runtime backups / editor sidecar caches (never commit)
 **/runtime.bak-*/
+**/runtime.bak.*/
 **/.vscode-test-web/
 vscode-web-cache.tgz
 D:/tmp/

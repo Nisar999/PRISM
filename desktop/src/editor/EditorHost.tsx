@@ -110,9 +110,7 @@ export function EditorHost({ className, workspaceUri, initialFile }: EditorHostP
             </p>
             {import.meta.env.DEV ? (
               <p className="mt-1 font-manrope text-[12px] text-prism-dim">
-                Dev: ensure the editing-engine sidecar is running (
-                <code className="rounded bg-white/5 px-1 py-0.5">npm run dev:code-oss</code>
-                ).
+                Dev: ensure the local editing sidecar is running, then Retry.
               </p>
             ) : null}
             <button

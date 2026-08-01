@@ -26,6 +26,9 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 class AgentInvokeRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: uuid.UUID | None = None
+    provider: str | None = None
+    model: str | None = None
+    api_key: str | None = None
 
 
 class AgentInvokeResponse(BaseModel):
@@ -40,6 +43,13 @@ class AgentInvokeResponse(BaseModel):
 
 
 def _build_initial_state(body: AgentInvokeRequest) -> AgentState:
+    metadata: dict = {}
+    if body.provider:
+        metadata["provider"] = body.provider
+    if body.model:
+        metadata["model"] = body.model
+    if body.api_key:
+        metadata["api_key"] = body.api_key
     return {
         "messages": [HumanMessage(content=body.message)],
         "session_id": body.session_id,
@@ -51,7 +61,7 @@ def _build_initial_state(body: AgentInvokeRequest) -> AgentState:
         "healing_actions": [],
         "final_answer": None,
         "errors": [],
-        "metadata": {},
+        "metadata": metadata,
     }
 
 

@@ -138,10 +138,32 @@ export function ConversationPage() {
     try {
       await providerManager.selectProvider(providerId, { softFail: true });
       await settingsManager.updateOption('providers', 'preferredProviderId', providerId);
+      const next = providerManager.getProviders().find((p) => p.id === providerId);
+      const first =
+        (next?.chatModels ?? next?.models ?? []).find((m) => m && !m.startsWith('(')) ?? '';
+      if (first) {
+        await settingsManager.updateOption('providers', 'preferredModel', first);
+      }
     } catch (err) {
       notificationStore.addNotification({
         type: 'warning',
         message: 'Provider switch failed',
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const selectModel = async (providerId: string, modelId: string) => {
+    try {
+      if (providers.activeProviderId !== providerId) {
+        await providerManager.selectProvider(providerId, { softFail: true });
+        await settingsManager.updateOption('providers', 'preferredProviderId', providerId);
+      }
+      await settingsManager.updateOption('providers', 'preferredModel', modelId);
+    } catch (err) {
+      notificationStore.addNotification({
+        type: 'warning',
+        message: 'Model switch failed',
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -166,9 +188,16 @@ export function ConversationPage() {
         id: p.id,
         name: p.name,
         status: p.status,
+        type: p.type,
+        capabilities: p.capabilities,
+        models: p.chatModels?.length ? p.chatModels : p.models,
+        latency: p.latency,
+        error: p.error,
       }))}
       activeProviderId={providers.activeProviderId}
+      activeModelId={settings.providers.preferredModel || null}
       onSelectProvider={(id) => void selectProvider(id)}
+      onSelectModel={(providerId, modelId) => void selectModel(providerId, modelId)}
       worktreeLabel={workspace.activeProject?.name ?? 'Open Workspace'}
       branchLabel="Main"
       onWorktreeClick={() => {

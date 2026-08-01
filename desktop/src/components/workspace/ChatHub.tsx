@@ -7,6 +7,7 @@ import gitBranch from '@/assets/figma/workspace/icon-git-branch.svg';
 import gitMerge from '@/assets/figma/workspace/icon-git-merge.svg';
 import lineDivider from '@/assets/figma/workspace/line-divider.svg';
 import { CommandComposer } from '@/components/ui/CommandComposer';
+import type { ComposerProviderOption } from '@/components/ui/CommandComposer';
 import { IconButton } from '@/components/ui/IconButton';
 import { LaunchIdeButton } from '@/components/ui/LaunchIdeButton';
 import { SoftGlowOrb } from '@/components/ui/SoftGlowOrb';
@@ -29,9 +30,11 @@ export interface ChatHubProps {
   onRetry?: () => void;
   modelLabel: string;
   onModelClick?: () => void;
-  providers?: { id: string; name: string; status?: string }[];
+  providers?: ComposerProviderOption[];
   activeProviderId?: string | null;
+  activeModelId?: string | null;
   onSelectProvider?: (providerId: string) => void;
+  onSelectModel?: (providerId: string, modelId: string) => void;
   worktreeLabel: string;
   branchLabel: string;
   onWorktreeClick?: () => void;
@@ -57,7 +60,9 @@ export function ChatHub({
   onModelClick,
   providers,
   activeProviderId,
+  activeModelId,
   onSelectProvider,
+  onSelectModel,
   worktreeLabel,
   branchLabel,
   onWorktreeClick,
@@ -115,7 +120,7 @@ export function ChatHub({
         className="left-[617px] top-[283px] h-[516px] w-[636px] -rotate-[158deg] opacity-80"
       />
 
-      {/* Figma 478:284 empty state — Launch IDE only (panel chrome lives in shell). */}
+      {/* PRISM empty state — open workspace via Launch PRISM IDE. */}
       <div className="absolute right-8 top-8 z-10 flex items-center gap-2 md:right-12 md:top-10">
         {!empty ? (
           <>
@@ -166,7 +171,9 @@ export function ChatHub({
                 onModelClick={onModelClick}
                 providers={providers}
                 activeProviderId={activeProviderId}
+                activeModelId={activeModelId}
                 onSelectProvider={onSelectProvider}
+                onSelectModel={onSelectModel}
                 busy={busy}
                 onMicClick={onMicClick}
               />
@@ -239,7 +246,9 @@ export function ChatHub({
                   onModelClick={onModelClick}
                   providers={providers}
                   activeProviderId={activeProviderId}
+                  activeModelId={activeModelId}
                   onSelectProvider={onSelectProvider}
+                  onSelectModel={onSelectModel}
                   busy={busy}
                   onCancel={onCancel}
                   onMicClick={onMicClick}

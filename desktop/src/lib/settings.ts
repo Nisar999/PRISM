@@ -19,6 +19,7 @@ export interface AppSettings {
     openaiKey: string;
     anthropicKey: string;
     geminiKey: string;
+    openrouterApiKey: string;
   };
   /** Appearance / chrome (UI label: Appearance). */
   layout: {
@@ -75,6 +76,7 @@ export const defaultSettings: AppSettings = {
     openaiKey: '',
     anthropicKey: '',
     geminiKey: '',
+    openrouterApiKey: '',
   },
   layout: {
     defaultPanelLayout: 'developer',
@@ -163,6 +165,7 @@ class SettingsManager {
     }
 
     try {
+      const previous = settingsStore.getSnapshot();
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(this.STORAGE_KEY, JSON.stringify(settings));
       }
@@ -174,6 +177,11 @@ class SettingsManager {
       if (!currentActive || currentActive.id !== settings.providers.preferredProviderId) {
         // Run async in background
         providerManager.selectProvider(settings.providers.preferredProviderId, { softFail: true }).catch(() => {});
+      }
+
+      // Refresh provider catalogue when OpenRouter credentials change
+      if (previous.providers.openrouterApiKey !== settings.providers.openrouterApiKey) {
+        void providerManager.discoverLocalProviders().catch(() => {});
       }
 
       // Side Effect 2: Update identity settings
