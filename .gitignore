@@ -89,3 +89,9 @@ _cert_*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── Throwaway helper scripts/messages used during repo setup (never tracked) ──
+_*.bat
+_*.txt
+_*.ps1
+
