@@ -109,6 +109,8 @@ export interface AgentInvokeRequest {
   model?: string | null;
   /** Optional API key for cloud providers (OpenRouter from Settings). */
   api_key?: string | null;
+  /** Discovered local base URL (Ollama / LM Studio / OpenAI-compat). */
+  endpoint?: string | null;
 }
 
 export interface AgentInvokeResponse {

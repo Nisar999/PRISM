@@ -24,6 +24,10 @@ class ChatRequest(BaseModel):
     tools: list[dict[str, Any]] | None = None
     # Optional per-request API key (e.g. OpenRouter from desktop settings).
     api_key: str | None = None
+    # Optional OpenAI-compatible / Ollama base URL discovered by desktop.
+    api_base: str | None = None
+    # Desktop provider id (ollama, lmstudio, openrouter, oai_compat_*, …).
+    provider_hint: str | None = None
 
 
 class ChatResponse(BaseModel):

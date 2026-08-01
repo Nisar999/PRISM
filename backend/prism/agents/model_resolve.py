@@ -23,8 +23,11 @@ def resolve_request_model(state: AgentState) -> str | None:
     if provider == "ollama":
         return f"ollama/{model}"
     if provider in {"lmstudio", "lm_studio"}:
+        # OpenAI-compatible local server; api_base comes from resolve_request_api_base.
         return f"openai/{model}"
     if provider == "openrouter":
+        if model.startswith("openrouter/"):
+            return model
         return f"openrouter/{model}"
     if provider == "openai":
         return f"openai/{model}"
@@ -45,3 +48,21 @@ def resolve_request_api_key(state: AgentState) -> str | None:
         return None
     key = key.strip()
     return key or None
+
+
+def resolve_request_api_base(state: AgentState) -> str | None:
+    """Discovered local endpoint from desktop ProviderManager."""
+    meta = state.get("metadata") or {}
+    endpoint = meta.get("endpoint")
+    if not endpoint or not isinstance(endpoint, str):
+        return None
+    endpoint = endpoint.strip().rstrip("/")
+    return endpoint or None
+
+
+def resolve_request_provider(state: AgentState) -> str | None:
+    meta = state.get("metadata") or {}
+    provider = meta.get("provider")
+    if not provider or not isinstance(provider, str):
+        return None
+    return provider.strip().lower() or None

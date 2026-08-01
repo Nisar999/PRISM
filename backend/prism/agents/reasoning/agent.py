@@ -1,7 +1,12 @@
 """Reasoning agent — CoT, ReAct, tool calling."""
 
 from prism.agents.state import AgentState
-from prism.agents.model_resolve import resolve_request_api_key, resolve_request_model
+from prism.agents.model_resolve import (
+    resolve_request_api_base,
+    resolve_request_api_key,
+    resolve_request_model,
+    resolve_request_provider,
+)
 from prism.core.logging import get_logger
 from prism.providers.interface import ChatMessage, ChatRequest
 from prism.providers.litellm_provider import LiteLLMProvider
@@ -40,6 +45,8 @@ class ReasoningAgent:
                 max_tokens=2000,
                 model=resolve_request_model(state),
                 api_key=resolve_request_api_key(state),
+                api_base=resolve_request_api_base(state),
+                provider_hint=resolve_request_provider(state),
             )
             response = await self._llm.chat(request)
             return {

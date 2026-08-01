@@ -69,12 +69,22 @@ class LiteLLMProvider(LLMProvider):
         if request.api_key:
             kwargs["api_key"] = request.api_key
 
-        # Provider-specific API base configuration
-        if model.startswith("ollama/"):
+        hint = (request.provider_hint or "").strip().lower()
+        discovered = (request.api_base or "").strip().rstrip("/") or None
+
+        # Desktop-discovered endpoint always wins when present.
+        if discovered:
+            kwargs["api_base"] = discovered
+        elif model.startswith("ollama/") or hint == "ollama":
             kwargs["api_base"] = self._settings.ollama_base_url
-        elif model.startswith("lm_studio/") or model.startswith("openai/lm-studio"):
+        elif (
+            model.startswith("lm_studio/")
+            or model.startswith("openai/lm-studio")
+            or hint in {"lmstudio", "lm_studio"}
+        ):
             kwargs["api_base"] = self._settings.lmstudio_base_url
-        elif model.startswith("openrouter/"):
+
+        if model.startswith("openrouter/") or hint == "openrouter":
             # Odysseus-style first-class OpenRouter identity headers
             kwargs.setdefault("extra_headers", {})
             kwargs["extra_headers"].update(

@@ -6,6 +6,16 @@ import { debugLog, debugWarn } from './debug';
 
 // --- Type Definitions matching LLM Provider specs ---
 
+export interface OpenRouterModelMeta {
+  id: string;
+  name?: string;
+  contextLength?: number;
+  supportsTools?: boolean;
+  supportsVision?: boolean;
+  isFree?: boolean;
+  isReasoning?: boolean;
+}
+
 export interface ProviderDefinition {
   id: string;
   name: string;
@@ -17,6 +27,10 @@ export interface ProviderDefinition {
   chatModels?: string[];
   embeddingModels?: string[];
   visionModels?: string[];
+  toolModels?: string[];
+  reasoningModels?: string[];
+  /** OpenRouter / cloud catalogue metadata when available. */
+  modelCatalogue?: OpenRouterModelMeta[];
   latency?: number;
   error?: string;
   /** Probe base URL when known (local providers). */
@@ -98,21 +112,47 @@ function providerDebug(step: string, detail: Record<string, unknown>): void {
 
 const SETTINGS_STORAGE_KEY = 'prism_app_settings';
 
-function readOllamaEndpointFromStorage(): string | undefined {
+function readProviderSettingsFromStorage(): {
+  ollamaEndpoint?: string;
+  lmstudioEndpoint?: string;
+  customEndpoints?: string;
+  openrouterApiKey?: string;
+} {
   try {
-    if (typeof window === 'undefined') return undefined;
+    if (typeof window === 'undefined') return {};
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { providers?: { ollamaEndpoint?: string } };
-    return parsed.providers?.ollamaEndpoint?.trim() || undefined;
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as {
+      providers?: {
+        ollamaEndpoint?: string;
+        lmstudioEndpoint?: string;
+        customEndpoints?: string;
+        openrouterApiKey?: string;
+        apiKey?: string;
+      };
+    };
+    return {
+      ollamaEndpoint: parsed.providers?.ollamaEndpoint?.trim() || undefined,
+      lmstudioEndpoint: parsed.providers?.lmstudioEndpoint?.trim() || undefined,
+      customEndpoints: parsed.providers?.customEndpoints?.trim() || undefined,
+      openrouterApiKey:
+        parsed.providers?.openrouterApiKey?.trim() ||
+        parsed.providers?.apiKey?.trim() ||
+        undefined,
+    };
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+function readOllamaEndpointFromStorage(): string | undefined {
+  return readProviderSettingsFromStorage().ollamaEndpoint;
 }
 
 function ollamaProbeBases(): string[] {
   const fromEnv = (import.meta.env.VITE_OLLAMA_BASE_URL as string | undefined)?.trim();
   const fromSettings = readOllamaEndpointFromStorage();
+  // Odysseus-inspired common local ports (no Tailscale mesh — loopback + settings).
   const bases = [
     fromEnv,
     fromSettings,
@@ -124,25 +164,35 @@ function ollamaProbeBases(): string[] {
   return [...new Set(bases.map((b) => b.replace(/\/$/, '')))];
 }
 
-/** Common LM Studio default ports + env override. */
+/** Common LM Studio default ports + settings/env overrides. */
 function lmStudioProbeBases(): string[] {
   const fromEnv = (import.meta.env.VITE_LMSTUDIO_BASE_URL as string | undefined)?.trim();
+  const fromSettings = readProviderSettingsFromStorage().lmstudioEndpoint;
   const bases = [
     fromEnv,
+    fromSettings,
     'http://127.0.0.1:1234',
     'http://localhost:1234',
+    'http://127.0.0.1:1235',
+    'http://localhost:1235',
   ].filter(Boolean) as string[];
   return [...new Set(bases.map((b) => b.replace(/\/$/, '')))];
 }
 
-/** User-configured generic OpenAI-compatible endpoints (comma-separated env). */
+/** User-configured generic OpenAI-compatible endpoints (settings + env). */
 function openAiCompatibleBases(): string[] {
-  const raw = (import.meta.env.VITE_OPENAI_COMPATIBLE_ENDPOINTS as string | undefined)?.trim();
+  const fromEnv = (import.meta.env.VITE_OPENAI_COMPATIBLE_ENDPOINTS as string | undefined)?.trim();
+  const fromSettings = readProviderSettingsFromStorage().customEndpoints;
+  const raw = [fromSettings, fromEnv].filter(Boolean).join(',');
   if (!raw) return [];
-  return raw
-    .split(',')
-    .map((s) => s.trim().replace(/\/$/, ''))
-    .filter(Boolean);
+  return [
+    ...new Set(
+      raw
+        .split(',')
+        .map((s) => s.trim().replace(/\/$/, ''))
+        .filter(Boolean),
+    ),
+  ];
 }
 
 async function fetchWithTimeout(url: string, timeoutMs = PROVIDER_HEALTH_TIMEOUT_MS): Promise<Response> {
@@ -208,61 +258,113 @@ function classifyOllamaModels(models: string[]): {
   chatModels: string[];
   embeddingModels: string[];
   visionModels: string[];
+  toolModels: string[];
+  reasoningModels: string[];
 } {
   const embeddingModels: string[] = [];
   const visionModels: string[] = [];
   const chatModels: string[] = [];
+  const toolModels: string[] = [];
+  const reasoningModels: string[] = [];
   for (const name of models) {
     const lower = name.toLowerCase();
     if (/embed|nomic-embed|mxbai-embed|bge-|e5-/.test(lower)) {
       embeddingModels.push(name);
-    } else if (/llava|vision|bakllava|minicpm-v|qwen2\.5-vl|llama3\.2-vision/.test(lower)) {
+      continue;
+    }
+    if (/llava|vision|bakllava|minicpm-v|qwen2\.5-vl|llama3\.2-vision/.test(lower)) {
       visionModels.push(name);
       chatModels.push(name);
     } else {
       chatModels.push(name);
     }
+    if (/tool|function|qwen2\.5|llama3\.1|llama3\.2|mistral|command-r|gpt-oss/.test(lower)) {
+      toolModels.push(name);
+    }
+    if (/reason|r1|thinking|qwq|o1|deepseek-r/.test(lower)) {
+      reasoningModels.push(name);
+    }
   }
-  return { chatModels, embeddingModels, visionModels };
+  return { chatModels, embeddingModels, visionModels, toolModels, reasoningModels };
 }
 
 async function probeOpenRouterCatalogue(
   apiKey: string,
-): Promise<{ healthy: boolean; latency_ms?: number; models: string[] }> {
+): Promise<{
+  healthy: boolean;
+  latency_ms?: number;
+  models: string[];
+  catalogue: OpenRouterModelMeta[];
+  authError?: string;
+}> {
   const start = performance.now();
+  let authError: string | undefined;
+  if (apiKey) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PROVIDER_HEALTH_TIMEOUT_MS);
+      const keyed = await fetch('https://openrouter.ai/api/v1/auth/key', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+      if (keyed.status === 401 || keyed.status === 403) {
+        authError = 'OpenRouter API key rejected.';
+      }
+    } catch {
+      /* catalogue probe still useful */
+    }
+  }
   try {
     const res = await fetchWithTimeout('https://openrouter.ai/api/v1/models', PROVIDER_HEALTH_TIMEOUT_MS);
-    // Catalogue is public; key validates separately via settings.
-    if (!res.ok) return { healthy: Boolean(apiKey), models: [] };
-    const body = (await res.json()) as { data?: Array<{ id?: string }> };
-    const models = (body.data ?? [])
-      .map((m) => m.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)
-      .slice(0, 80);
+    if (!res.ok) {
+      return { healthy: Boolean(apiKey) && !authError, models: [], catalogue: [], authError };
+    }
+    const body = (await res.json()) as {
+      data?: Array<{
+        id?: string;
+        name?: string;
+        context_length?: number;
+        architecture?: { modality?: string; input_modalities?: string[] };
+        supported_parameters?: string[];
+        pricing?: { prompt?: string };
+      }>;
+    };
+    const catalogue: OpenRouterModelMeta[] = [];
+    for (const m of body.data ?? []) {
+      const id = m.id;
+      if (!id) continue;
+      const params = m.supported_parameters ?? [];
+      const modalities = m.architecture?.input_modalities ?? [];
+      const modality = m.architecture?.modality ?? '';
+      const isReasoning =
+        /r1|reason|thinking|o1|qwq/i.test(id) || params.includes('reasoning');
+      catalogue.push({
+        id,
+        name: m.name,
+        contextLength: m.context_length,
+        supportsTools: params.includes('tools') || params.includes('tool_choice'),
+        supportsVision:
+          modalities.includes('image') || /vision|vl|multimodal/i.test(modality + id),
+        isFree: id.endsWith(':free') || m.pricing?.prompt === '0',
+        isReasoning,
+      });
+      if (catalogue.length >= 120) break;
+    }
+    const models = catalogue.map((m) => m.id);
     return {
-      healthy: Boolean(apiKey),
+      healthy: Boolean(apiKey) && !authError,
       latency_ms: Math.round(performance.now() - start),
       models,
+      catalogue,
+      authError,
     };
   } catch {
-    return { healthy: Boolean(apiKey), models: [] };
+    return { healthy: Boolean(apiKey) && !authError, models: [], catalogue: [], authError };
   }
 }
 
 function readOpenRouterKeyFromStorage(): string | undefined {
-  try {
-    if (typeof window === 'undefined') return undefined;
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { providers?: { openrouterApiKey?: string; apiKey?: string } };
-    return (
-      parsed.providers?.openrouterApiKey?.trim() ||
-      parsed.providers?.apiKey?.trim() ||
-      undefined
-    );
-  } catch {
-    return undefined;
-  }
+  return readProviderSettingsFromStorage().openrouterApiKey;
 }
 
 /** Probe an OpenAI-compatible `/v1/models` endpoint. Returns healthy + base + models. */
@@ -415,9 +517,13 @@ class ProviderManager {
     if (ollama.healthy && ollama.base) {
       const models = await fetchOllamaModels(ollama.base);
       const classified = classifyOllamaModels(models);
-      const caps = ['chat', 'tool_use', 'reasoning'];
+      const caps = ['chat'];
+      if (classified.toolModels.length) caps.push('tool_use');
+      if (classified.reasoningModels.length) caps.push('reasoning');
       if (classified.embeddingModels.length) caps.push('embeddings');
       if (classified.visionModels.length) caps.push('vision');
+      if (!classified.toolModels.length) caps.push('tool_use');
+      if (!classified.reasoningModels.length) caps.push('reasoning');
       providerStore.updateProvider('ollama', {
         status: 'active',
         latency: ollama.latency_ms ?? 120,
@@ -427,7 +533,9 @@ class ProviderManager {
         chatModels: classified.chatModels,
         embeddingModels: classified.embeddingModels,
         visionModels: classified.visionModels,
-        capabilities: caps,
+        toolModels: classified.toolModels,
+        reasoningModels: classified.reasoningModels,
+        capabilities: [...new Set(caps)],
       });
       providerDebug('discoverLocalProviders.ollama.ok', { base: ollama.base, modelCount: models.length });
     } else {
@@ -438,6 +546,8 @@ class ProviderManager {
         chatModels: [],
         embeddingModels: [],
         visionModels: [],
+        toolModels: [],
+        reasoningModels: [],
       });
     }
 
@@ -471,14 +581,25 @@ class ProviderManager {
       readOpenRouterKeyFromStorage() ||
       '';
     const or = await probeOpenRouterCatalogue(orKey);
+    const orCaps = ['chat'];
+    if (or.catalogue.some((m) => m.supportsTools)) orCaps.push('tool_use');
+    if (or.catalogue.some((m) => m.supportsVision)) orCaps.push('vision');
+    if (or.catalogue.some((m) => m.isReasoning)) orCaps.push('reasoning');
     providerStore.updateProvider('openrouter', {
-      status: orKey && or.healthy ? 'active' : or.models.length ? 'inactive' : 'inactive',
+      status: orKey && or.healthy ? 'active' : 'inactive',
       latency: or.latency_ms,
-      error: orKey ? undefined : 'Add an OpenRouter API key in Settings to activate.',
+      error:
+        or.authError ||
+        (orKey ? undefined : 'Add an OpenRouter API key in Settings to activate.'),
       models: or.models.length
         ? or.models
         : ['openrouter/meta-llama/llama-3.2-3b-instruct:free'],
       chatModels: or.models,
+      reasoningModels: or.catalogue.filter((m) => m.isReasoning).map((m) => m.id),
+      visionModels: or.catalogue.filter((m) => m.supportsVision).map((m) => m.id),
+      toolModels: or.catalogue.filter((m) => m.supportsTools).map((m) => m.id),
+      modelCatalogue: or.catalogue,
+      capabilities: orCaps.length > 1 ? orCaps : ['chat', 'reasoning', 'vision', 'tool_use'],
     });
 
     // Generic OpenAI-compatible endpoints (registered dynamically)
@@ -605,6 +726,8 @@ class ProviderManager {
           chatModels: classified.chatModels,
           embeddingModels: classified.embeddingModels,
           visionModels: classified.visionModels,
+          toolModels: classified.toolModels,
+          reasoningModels: classified.reasoningModels,
           capabilities: caps,
         });
         providerDebug('checkProviderHealth.ok', { providerId, via: 'ollama-direct', base: direct.base });
@@ -619,15 +742,21 @@ class ProviderManager {
         '';
       const or = await probeOpenRouterCatalogue(key);
       providerStore.updateProvider(providerId, {
-        status: key ? 'active' : 'inactive',
+        status: key && or.healthy ? 'active' : 'inactive',
         latency: or.latency_ms,
-        error: key ? undefined : 'Add an OpenRouter API key in Settings to activate.',
+        error:
+          or.authError ||
+          (key ? undefined : 'Add an OpenRouter API key in Settings to activate.'),
         models: or.models.length
           ? or.models
           : ['openrouter/meta-llama/llama-3.2-3b-instruct:free'],
         chatModels: or.models,
+        reasoningModels: or.catalogue.filter((m) => m.isReasoning).map((m) => m.id),
+        visionModels: or.catalogue.filter((m) => m.supportsVision).map((m) => m.id),
+        toolModels: or.catalogue.filter((m) => m.supportsTools).map((m) => m.id),
+        modelCatalogue: or.catalogue,
       });
-      if (key) return;
+      if (key && or.healthy) return;
     }
 
     if (providerId === 'lmstudio') {
@@ -747,6 +876,49 @@ class ProviderManager {
   }
 
   /**
+   * Refresh models for a single provider (hot path for UI refresh).
+   */
+  public async discoverModels(providerId: string): Promise<string[]> {
+    await this.checkProviderHealth(providerId).catch(() => undefined);
+    const p = providerStore.getSnapshot().providers[providerId];
+    return (p?.chatModels?.length ? p.chatModels : p?.models) ?? [];
+  }
+
+  /** Alias — detect installed local/cloud providers. */
+  public async detect(): Promise<void> {
+    await this.discoverLocalProviders();
+  }
+
+  /** Alias — health for one provider. */
+  public async health(providerId: string): Promise<void> {
+    await this.checkProviderHealth(providerId);
+  }
+
+  /** Capability labels for a provider (from last discovery). */
+  public capabilities(providerId: string): string[] {
+    return providerStore.getSnapshot().providers[providerId]?.capabilities ?? [];
+  }
+
+  private hotReloadTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Periodically re-probe local providers so newly pulled Ollama models appear
+   * without restarting PRISM (Odysseus-inspired keep-alive discovery).
+   */
+  public startHotReload(intervalMs = 45_000): void {
+    if (this.hotReloadTimer || typeof window === 'undefined') return;
+    this.hotReloadTimer = setInterval(() => {
+      void this.discoverLocalProviders().catch(() => undefined);
+    }, intervalMs);
+  }
+
+  public stopHotReload(): void {
+    if (!this.hotReloadTimer) return;
+    clearInterval(this.hotReloadTimer);
+    this.hotReloadTimer = null;
+  }
+
+  /**
    * Boostrap active provider selection based on loaded user settings.
    * Auto-discovers local providers first, then activates the preferred one
    * (or the first healthy local provider) so the user rarely needs manual
@@ -755,6 +927,7 @@ class ProviderManager {
   public async bootstrap(): Promise<void> {
     providerDebug('bootstrap.start', {});
     await this.discoverLocalProviders();
+    this.startHotReload();
 
     const activeIdentity = identityStore.getSnapshot().activeIdentity;
     const preferredId = activeIdentity?.settings?.preferredProviderId;

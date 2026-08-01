@@ -16,6 +16,9 @@ export interface AppSettings {
     /** Preferred model id/name from the active provider catalogue. */
     preferredModel: string;
     ollamaEndpoint: string;
+    lmstudioEndpoint: string;
+    /** Comma-separated OpenAI-compatible base URLs (runtime, no rebuild). */
+    customEndpoints: string;
     openaiKey: string;
     anthropicKey: string;
     geminiKey: string;
@@ -73,6 +76,8 @@ export const defaultSettings: AppSettings = {
     preferredProviderId: 'ollama',
     preferredModel: '',
     ollamaEndpoint: 'http://localhost:11434',
+    lmstudioEndpoint: 'http://localhost:1234',
+    customEndpoints: '',
     openaiKey: '',
     anthropicKey: '',
     geminiKey: '',
@@ -179,8 +184,13 @@ class SettingsManager {
         providerManager.selectProvider(settings.providers.preferredProviderId, { softFail: true }).catch(() => {});
       }
 
-      // Refresh provider catalogue when OpenRouter credentials change
-      if (previous.providers.openrouterApiKey !== settings.providers.openrouterApiKey) {
+      // Refresh provider catalogue when credentials or local endpoints change
+      const providersChanged =
+        previous.providers.openrouterApiKey !== settings.providers.openrouterApiKey ||
+        previous.providers.ollamaEndpoint !== settings.providers.ollamaEndpoint ||
+        previous.providers.lmstudioEndpoint !== settings.providers.lmstudioEndpoint ||
+        previous.providers.customEndpoints !== settings.providers.customEndpoints;
+      if (providersChanged) {
         void providerManager.discoverLocalProviders().catch(() => {});
       }
 

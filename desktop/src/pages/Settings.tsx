@@ -540,12 +540,36 @@ export function SettingsPage() {
                   </Row>
                 )}
                 {match('ollama', 'endpoint') && (
-                  <Row title="Ollama endpoint" description="Base URL for local Ollama.">
+                  <Row title="Ollama endpoint" description="Base URL for local Ollama (auto-probed if blank).">
                     <input
                       type="text"
                       className={cn(inputClass, 'w-64')}
                       value={settings.providers.ollamaEndpoint}
                       onChange={(e) => void patch('providers', 'ollamaEndpoint', e.target.value)}
+                    />
+                  </Row>
+                )}
+                {match('lmstudio', 'lm', 'studio', 'endpoint') && (
+                  <Row title="LM Studio endpoint" description="OpenAI-compatible base URL.">
+                    <input
+                      type="text"
+                      className={cn(inputClass, 'w-64')}
+                      value={settings.providers.lmstudioEndpoint}
+                      onChange={(e) => void patch('providers', 'lmstudioEndpoint', e.target.value)}
+                    />
+                  </Row>
+                )}
+                {match('custom', 'compatible', 'endpoint') && (
+                  <Row
+                    title="Custom OpenAI-compatible endpoints"
+                    description="Comma-separated base URLs (no rebuild required)."
+                  >
+                    <input
+                      type="text"
+                      placeholder="http://127.0.0.1:8000,http://127.0.0.1:8080"
+                      className={cn(inputClass, 'w-80')}
+                      value={settings.providers.customEndpoints}
+                      onChange={(e) => void patch('providers', 'customEndpoints', e.target.value)}
                     />
                   </Row>
                 )}

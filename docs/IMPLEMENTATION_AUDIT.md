@@ -757,4 +757,91 @@ Desktop Agent · Browser Agent · Plugin SDK · Workflow Engine · Distributed A
 | Commit | `b91168528283e97ca2c774c64f7845b61a0645fd` |
 | Push verified | ✅ `origin/main` == local HEAD (`b911685`); remote `https://github.com/Nisar999/PRISM` |
 
+---
+
+## 14. Odysseus engineering study → production AI platform
+
+**Date:** 2026-08-02  
+**Reference:** `odysseus/` (extracted, **read-only**) + `odysseus.zip`  
+**Rule:** PRISM remains PRISM. Odysseus is an engineering study — transplant patterns, never copy wholesale.
+
+### 14.1 Architecture comparison (executive)
+
+| Subsystem | Odysseus | PRISM | Verdict | Integrate? |
+|-----------|----------|-------|---------|------------|
+| Provider abstraction | Endpoint DB + resolver + llm_core | Desktop `ProviderManager` + backend LiteLLM | PRISM abstraction fits product; Odysseus discovery/metadata richer | Improve ProviderManager — **do not replace** |
+| Chat pipeline | Direct chat + detached runs | LangGraph agent (planner→…→healing) + SSE | PRISM agent graph is product; Odysseus streaming reliability better | Fix SSE; keep LangGraph |
+| Local discovery | Port scan + Tailscale mesh | Loopback probes | Odysseus broader; Tailscale out of scope | Adopt classification + hot reload + settings endpoints |
+| OpenRouter | First-class headers + catalogue | LiteLLM + partial catalogue | Merge Odysseus metadata/auth ideas into PRISM | Yes |
+| Streaming | Token + buffer + reconnect | Node-level SSE (was broken unpack) | Fix PRISM SSE; defer detached buffer | Fix now |
+| Memory | Hybrid retrieval | MemoryService + LangGraph retrieval | Keep PRISM | No replace |
+| Markdown | Custom segmenter | React turn cards | Optional later | Defer |
+| Tools / agent loop | Tool index + loopback | Healing/planner tools later | Defer | No |
+| Auth / secrets | EncryptedText | Settings localStorage keys | Optional later | Defer |
+| Desktop shell | Web app | Tauri + Code-OSS engine | Keep PRISM constitution | No |
+
+### 14.2 Odysseus improvements adopted this milestone
+
+| Idea | PRISM change |
+|------|----------------|
+| Chat vs embed/vision/tool/reasoning classification | Expanded `classifyOllamaModels` + OpenRouter catalogue flags |
+| OpenRouter identity + catalogue richness | Auth key probe, `modelCatalogue`, capability derivation |
+| Local endpoint keep-alive | `ProviderManager.startHotReload()` (45s) |
+| Endpoint resolution to inference | Desktop `endpoint` → agent metadata → LiteLLM `api_base` |
+| Non-chat model filter spirit | Chat picker prefers `chatModels` |
+| Graceful fallback with key | Existing LiteLLM fallback + per-request api_key |
+
+### 14.3 Explicitly not adopted
+
+Tailscale mesh · Odysseus `llm_core` replacement of LiteLLM · custom markdown renderer · JSON-file primary store · detached-run buffer (queued) · tool_index RAG · EncryptedText columns · rebuild of conversation UX around Odysseus chatStream.
+
+### 14.4 Critical fixes
+
+1. **SSE unpack bug** — `astream(stream_mode="updates")` yields `{node: chunk}`; iterating as `(node, chunk)` crashed every stream. Fixed in `agent.py`.
+2. **LM Studio / OpenAI-compat `api_base`** — `openai/<model>` without base hit cloud OpenAI. Fixed via `ChatRequest.api_base` + `provider_hint` + desktop `endpoint`.
+3. **Provider → backend endpoint sync** — discovered Ollama/LM Studio base forwarded on every invoke/stream.
+
+### 14.5 ProviderManager platform surface
+
+| Method | Role |
+|--------|------|
+| `detect()` / `discoverLocalProviders()` | Probe Ollama, LM Studio, OpenRouter, custom endpoints |
+| `health(id)` / `checkProviderHealth` | Per-provider refresh |
+| `discoverModels(id)` | Model list refresh |
+| `capabilities(id)` | Capability labels |
+| `selectProvider` / `bootstrap` / `startHotReload` | Activation + keep-alive |
+| Settings | `ollamaEndpoint`, `lmstudioEndpoint`, `customEndpoints`, `openrouterApiKey` |
+
+Chat/stream/cancel remain on `AgentManager` (product agent path) — not duplicated onto ProviderManager.
+
+### 14.6 Files touched (this section)
+
+| Area | Paths |
+|------|-------|
+| Backend stream/routing | `api/routes/agent.py`, `api/routes/provider.py`, `providers/litellm_provider.py`, `providers/interface.py`, `agents/model_resolve.py`, planner/reasoning/reflection |
+| Desktop providers | `providers.ts`, `agent.ts`, `api.ts`, `settings.ts`, `Settings.tsx` |
+| UI | `CommandComposer.tsx` |
+| Branding | re-synced `desktop/src/assets/branding/*`, `public/branding/*` |
+| Docs | this section |
+
+### 14.7 Verification
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit` / `npm run build` | ✅ |
+| `npm run build:desktop` → `build/latest/PRISM Desktop.exe` | ✅ (~21.9 MB) + runtime synced |
+| Agent stream emits `final` (no unpack error) | ✅ SSE unpack fixed |
+| Ollama models auto-populate + hot reload | ✅ discovery + 45s hot reload |
+| OpenRouter key auth + catalogue | ✅ |
+| Branding assets from `assets/branding/` | ✅ re-synced; smoke-launch OK |
+| Smoke-launch `PRISM Desktop.exe` | ✅ |
+
+### 14.8 Remaining limitations
+
+1. Upstream iframe may still show Code-OSS product strings.
+2. No LAN/mDNS discovery (loopback + settings endpoints only).
+3. Cancel still client-side SSE abort (backend may continue briefly).
+4. Token-level streaming inside nodes not yet wired (`LiteLLMProvider.stream` unused by agents).
+5. Odysseus detached-run reconnect buffer not yet ported.
+
 

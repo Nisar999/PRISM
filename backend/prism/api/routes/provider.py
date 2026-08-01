@@ -21,6 +21,8 @@ class ChatRequestBody(BaseModel):
     model: str | None = None
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = None
+    api_key: str | None = None
+    endpoint: str | None = None
 
 
 @router.get("/health", response_model=DataResponse[ProviderHealth])
@@ -66,6 +68,9 @@ async def chat(body: ChatRequestBody) -> DataResponse[ChatResponse]:
                 model=_resolve_model_name(body),
                 temperature=body.temperature,
                 max_tokens=body.max_tokens,
+                api_key=body.api_key,
+                api_base=body.endpoint.rstrip("/") if body.endpoint else None,
+                provider_hint=body.provider,
             )
         )
         return DataResponse(data=response, meta=MetaResponse(timestamp=datetime.now(UTC).isoformat()))

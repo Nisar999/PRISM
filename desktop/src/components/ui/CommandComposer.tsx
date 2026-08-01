@@ -134,7 +134,7 @@ export function CommandComposer({
             <div
               role="listbox"
               aria-label="Providers and models"
-              className="absolute bottom-full left-0 z-30 mb-2 max-h-[360px] w-[min(380px,90vw)] overflow-y-auto rounded-md border border-white/10 bg-prism-panel py-1 shadow-prism-elevated"
+              className="absolute bottom-full left-0 z-30 mb-2 max-h-[380px] w-[min(400px,92vw)] overflow-y-auto rounded-lg border border-white/10 bg-prism-panel py-1.5 shadow-prism-elevated scrollbar-thin"
             >
               {providers.map((p) => {
                 const active = p.id === activeProviderId;
@@ -147,8 +147,8 @@ export function CommandComposer({
                       role="option"
                       aria-selected={active}
                       className={cn(
-                        'flex w-full flex-col gap-1 px-3 py-2.5 text-left font-manrope',
-                        active ? 'bg-white/10 text-white' : 'text-prism-muted hover:bg-white/5 hover:text-white',
+                        'flex w-full flex-col gap-1.5 px-3.5 py-2.5 text-left font-manrope',
+                        active ? 'bg-white/[0.08] text-white' : 'text-prism-muted hover:bg-white/[0.04] hover:text-white',
                       )}
                       onClick={() => {
                         onSelectProvider?.(p.id);
@@ -161,10 +161,10 @@ export function CommandComposer({
                       }}
                     >
                       <div className="flex w-full items-center justify-between gap-2">
-                        <span className="text-[13px] font-medium text-white">{p.name}</span>
+                        <span className="text-[13px] font-semibold tracking-tight text-white">{p.name}</span>
                         <span
                           className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide',
+                            'rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider',
                             p.status === 'active'
                               ? 'bg-emerald-500/20 text-emerald-200'
                               : 'bg-white/5 text-prism-dim',
@@ -173,10 +173,10 @@ export function CommandComposer({
                           {p.status ?? 'offline'}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-prism-dim">
-                        <span>{p.type === 'cloud' ? 'Cloud' : 'Local'}</span>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] leading-none text-prism-dim">
+                        <span className="text-prism-muted">{p.type === 'cloud' ? 'Cloud' : 'Local'}</span>
                         {(p.capabilities ?? []).slice(0, 4).map((c) => (
-                          <span key={c} className="rounded bg-white/5 px-1.5 py-0.5 text-prism-muted">
+                          <span key={c} className="rounded bg-white/[0.06] px-1.5 py-0.5 text-prism-muted">
                             {c}
                           </span>
                         ))}
@@ -187,21 +187,21 @@ export function CommandComposer({
                       ) : null}
                     </button>
                     {expanded && models.length > 0 && onSelectModel ? (
-                      <div className="space-y-0.5 bg-black/20 px-2 pb-2">
-                        <p className="px-1 py-1 text-[10px] uppercase tracking-wide text-prism-dim">
-                          Models
+                      <div className="space-y-0.5 bg-black/25 px-2.5 pb-2.5 pt-1">
+                        <p className="px-1 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-prism-dim">
+                          Model
                         </p>
-                        {models.slice(0, 12).map((m) => {
+                        {models.slice(0, 14).map((m) => {
                           const selected = active && (activeModelId === m || (!activeModelId && m === models[0]));
                           return (
                             <button
                               key={m}
                               type="button"
                               className={cn(
-                                'flex w-full truncate rounded px-2 py-1.5 text-left font-manrope text-[12px]',
+                                'flex w-full truncate rounded-md px-2.5 py-1.5 text-left font-manrope text-[12px] leading-snug',
                                 selected
                                   ? 'bg-prism-focus/20 text-white'
-                                  : 'text-prism-muted hover:bg-white/5 hover:text-white',
+                                  : 'text-prism-muted hover:bg-white/[0.05] hover:text-white',
                               )}
                               onClick={() => {
                                 onSelectModel(p.id, m);

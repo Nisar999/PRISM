@@ -22,6 +22,7 @@ function resolveProviderRouting(request: AgentInvokeRequest): {
   provider: string | null;
   model: string | null;
   api_key: string | null;
+  endpoint: string | null;
 } {
   const providerSnap = providerStore.getSnapshot();
   const settings = settingsStore.getSnapshot();
@@ -43,7 +44,13 @@ function resolveProviderRouting(request: AgentInvokeRequest): {
   if (!api_key && provider === 'openrouter') {
     api_key = settings.providers.openrouterApiKey?.trim() || null;
   }
-  return { provider, model, api_key };
+  const endpoint =
+    request.endpoint?.trim() ||
+    active?.endpoint?.trim() ||
+    (provider === 'ollama' ? settings.providers.ollamaEndpoint?.trim() : null) ||
+    (provider === 'lmstudio' ? settings.providers.lmstudioEndpoint?.trim() : null) ||
+    null;
+  return { provider, model, api_key, endpoint };
 }
 
 class AgentStore extends Store<AgentState> {
@@ -135,6 +142,7 @@ class AgentManager {
         provider: routing.provider,
         model: routing.model,
         api_key: routing.api_key,
+        endpoint: routing.endpoint,
       });
 
       agentStore.setSucceeded(response, sessionId);
@@ -203,6 +211,7 @@ class AgentManager {
           provider: routing.provider,
           model: routing.model,
           api_key: routing.api_key,
+          endpoint: routing.endpoint,
         },
         {
           signal: controller.signal,

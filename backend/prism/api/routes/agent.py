@@ -29,6 +29,8 @@ class AgentInvokeRequest(BaseModel):
     provider: str | None = None
     model: str | None = None
     api_key: str | None = None
+    # Discovered local base URL (Ollama / LM Studio / OpenAI-compat) from desktop.
+    endpoint: str | None = None
 
 
 class AgentInvokeResponse(BaseModel):
@@ -50,6 +52,8 @@ def _build_initial_state(body: AgentInvokeRequest) -> AgentState:
         metadata["model"] = body.model
     if body.api_key:
         metadata["api_key"] = body.api_key
+    if body.endpoint:
+        metadata["endpoint"] = body.endpoint
     return {
         "messages": [HumanMessage(content=body.message)],
         "session_id": body.session_id,
@@ -116,19 +120,21 @@ async def _stream_agent_events(
 
     final_state: AgentState = {}
     try:
-        async for node_name, chunk in graph._graph.astream(initial_state, stream_mode="updates"):
-            yield _sse_event("node_started", {"node": node_name})
-            if isinstance(chunk, dict):
-                final_state.update(chunk)
-                # Emit incremental content so the UI can render token-by-token
-                # for the reasoning / final_answer fields as soon as a node publishes them.
-                incremental = {
-                    k: chunk.get(k)
-                    for k in ("plan", "reasoning", "reflection", "final_answer", "trust_score")
-                    if k in chunk
-                }
-                if incremental:
-                    yield _sse_event("node_updated", {"node": node_name, "state": incremental})
+        # LangGraph stream_mode="updates" yields {node_name: update_dict} per step.
+        async for update in graph._graph.astream(initial_state, stream_mode="updates"):
+            if not isinstance(update, dict):
+                continue
+            for node_name, chunk in update.items():
+                yield _sse_event("node_started", {"node": node_name})
+                if isinstance(chunk, dict):
+                    final_state.update(chunk)
+                    incremental = {
+                        k: chunk.get(k)
+                        for k in ("plan", "reasoning", "reflection", "final_answer", "trust_score")
+                        if k in chunk
+                    }
+                    if incremental:
+                        yield _sse_event("node_updated", {"node": node_name, "state": incremental})
     except Exception as exc:  # noqa: BLE001
         logger.exception("agent_stream_failed")
         yield _sse_event("error", {"message": str(exc)})
