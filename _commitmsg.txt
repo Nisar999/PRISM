@@ -1,1 +1,0 @@
-Initial PRISM project: backend, desktop, docker, docs, scripts, assets, .github community files, README, and repository modernization (gitignore + gitattributes).

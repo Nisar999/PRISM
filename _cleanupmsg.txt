@@ -1,0 +1,1 @@
+chore: remove throwaway helper files (_commitmsg.txt, _gitops.bat) used during git setup.
