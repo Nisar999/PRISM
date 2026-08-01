@@ -844,4 +844,12 @@ Chat/stream/cancel remain on `AgentManager` (product agent path) — not duplica
 4. Token-level streaming inside nodes not yet wired (`LiteLLMProvider.stream` unused by agents).
 5. Odysseus detached-run reconnect buffer not yet ported.
 
+### 14.9 Git
+
+| Item | Value |
+|------|--------|
+| Commit | `5e25afd91f1021e493e6908eb7b5de708a0143f2` |
+| Push | ✅ `origin/main` |
+| Odysseus extract | Local `odysseus/` gitignored; archive remains `odysseus.zip` |
+
 
